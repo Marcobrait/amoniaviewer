@@ -10,6 +10,11 @@ function bool(value, fallback) {
   return String(value).toLowerCase() === 'true';
 }
 
+function float(value, fallback) {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
 const env = {
   db: {
     server: process.env.DB_SERVER || 'localhost',
@@ -43,7 +48,11 @@ const env = {
     groupIntervalMinutes: int(process.env.DEFAULT_GROUP_INTERVAL_MINUTES, 10),
     updateIntervalMinutes: int(process.env.DEFAULT_UPDATE_INTERVAL_MINUTES, 10),
     historyHours: int(process.env.HISTORY_HOURS, 24),
-    reliableQualityValue: int(process.env.RELIABLE_QUALITY_VALUE, 192)
+    reliableQualityValue: int(process.env.RELIABLE_QUALITY_VALUE, 192),
+    // Leitura acima deste valor e tratada como erro de sensor (mesmo status
+    // de "falha" usado para valores negativos), tanto no dashboard quanto no
+    // painel do Grafana.
+    maxSensorValue: float(process.env.MAX_SENSOR_VALUE, 10000)
   }
 };
 

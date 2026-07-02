@@ -37,6 +37,7 @@ router.get('/', async (req, res) => {
       timestampColumn: env.db.timestampColumn,
       lastTimestamp: latestRow ? latestRow[env.db.timestampColumn] : null,
       reliableQualityValue: reliableValue,
+      maxSensorValue: env.defaults.maxSensorValue,
       columns
     });
   } catch (err) {

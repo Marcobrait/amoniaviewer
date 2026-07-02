@@ -66,6 +66,7 @@ let selectionInitialized = false;
 let searchTerm = '';
 let currentTop = null;
 let currentColMeta = new Map();
+let currentMaxSensorValue = undefined;
 let currentStatus = { counts: { failure: 0, alarm: 0, evacuation: 0 }, total: 0, statusByName: new Map() };
 
 // ---------- formatting helpers ----------
@@ -111,13 +112,15 @@ function displayNameOf(meta, name) {
 }
 
 // Scans every enabled sensor's 24h series and returns the single highest
-// reading found (the hero stat), or null if there is no data at all yet.
-function computeTopReading(hist, colMetaMap) {
+// VALID reading found (ignora leituras acima do limite maximo, tratadas
+// como erro de sensor), ou null se nao houver nenhum dado valido ainda.
+function computeTopReading(hist, colMetaMap, maxSensorValue) {
   let top = null;
   for (const name of hist.columns) {
     const points = hist.series[name] || [];
     for (const pt of points) {
       if (pt.value === null || pt.value === undefined) continue;
+      if (typeof maxSensorValue === 'number' && pt.value > maxSensorValue) continue;
       if (!top || pt.value > top.value) {
         top = { name, displayName: displayNameOf(colMetaMap.get(name), name), value: pt.value, timestamp: pt.timestamp };
       }
@@ -127,14 +130,15 @@ function computeTopReading(hist, colMetaMap) {
 }
 
 // Estado de um sensor a partir da sua ultima leitura:
-//  - failure: leitura negativa (fora de faixa / falha do sensor)
+//  - failure: leitura negativa OU acima do limite maximo (fora de faixa / falha do sensor)
 //  - evacuation: acima do setpoint de evacuacao
 //  - alarm: acima do setpoint de alarme (e abaixo do de evacuacao)
 //  - normal: dentro da faixa esperada
 // Mutuamente exclusivos - nunca mais de um se aplica ao mesmo tempo.
-function sensorStatus(value, meta) {
+function sensorStatus(value, meta, maxSensorValue) {
   if (value === null || value === undefined || Number.isNaN(value)) return 'unknown';
   if (value < 0) return 'failure';
+  if (typeof maxSensorValue === 'number' && value > maxSensorValue) return 'failure';
   const alarm = meta ? meta.alarmSetpoint : 10;
   const evacuation = meta ? meta.evacuationSetpoint : 20;
   if (typeof evacuation === 'number' && value > evacuation) return 'evacuation';
@@ -142,13 +146,13 @@ function sensorStatus(value, meta) {
   return 'normal';
 }
 
-function computeStatusSummary(hist, colMetaMap) {
+function computeStatusSummary(hist, colMetaMap, maxSensorValue) {
   const counts = { failure: 0, alarm: 0, evacuation: 0 };
   const statusByName = new Map();
   for (const name of hist.columns) {
     const points = hist.series[name] || [];
     const last = points.length ? points[points.length - 1] : null;
-    const status = sensorStatus(last ? last.value : null, colMetaMap.get(name));
+    const status = sensorStatus(last ? last.value : null, colMetaMap.get(name), maxSensorValue);
     statusByName.set(name, status);
     if (status === 'failure' || status === 'alarm' || status === 'evacuation') counts[status]++;
   }
@@ -275,12 +279,13 @@ function render() {
     `agrupado a cada ${hist.groupIntervalMinutes} min, atualizado a cada ${hist.updateIntervalMinutes} min.`;
 
   currentColMeta = new Map((cols.columns || []).map((c) => [c.name, c]));
-  currentTop = computeTopReading(hist, currentColMeta);
-  currentStatus = computeStatusSummary(hist, currentColMeta);
+  currentMaxSensorValue = cols.maxSensorValue;
+  currentTop = computeTopReading(hist, currentColMeta, currentMaxSensorValue);
+  currentStatus = computeStatusSummary(hist, currentColMeta, currentMaxSensorValue);
 
   renderKpiRow(hist, currentColMeta, currentTop, currentStatus);
   renderDonut(currentStatus);
-  renderTrendChart(hist, currentColMeta);
+  renderTrendChart(hist, currentColMeta, currentMaxSensorValue);
 
   if (hist.columns.length === 0) {
     cardSections.innerHTML = '';
@@ -528,19 +533,27 @@ function renderDonut(status) {
   donutWrap.appendChild(buildDonutChart(status));
 }
 
-// Sensores que tiveram pelo menos uma leitura acima de 0 nas ultimas 24h
-// (exclui sensores sem dados/nao confiaveis e sensores em falha permanente).
-function qualifyingTrendSensors(hist) {
+// Um ponto e valido para o grafico de tendencia quando esta entre 0 (exclusivo)
+// e o limite maximo configurado (MAX_SENSOR_VALUE) - leituras acima do limite
+// sao tratadas como erro de sensor, iguais a leituras negativas.
+function isValidTrendPoint(value, maxSensorValue) {
+  return typeof value === 'number' && value > 0 && (typeof maxSensorValue !== 'number' || value <= maxSensorValue);
+}
+
+// Sensores que tiveram pelo menos uma leitura valida (>0 e <= limite maximo)
+// nas ultimas 24h (exclui sensores sem dados/nao confiaveis, sensores em
+// falha permanente e sensores que nunca saem do estouro do limite maximo).
+function qualifyingTrendSensors(hist, maxSensorValue) {
   return hist.columns.filter((name) => {
     const points = hist.series[name] || [];
-    return points.some((p) => typeof p.value === 'number' && p.value > 0);
+    return points.some((p) => isValidTrendPoint(p.value, maxSensorValue));
   });
 }
 
-function renderTrendChart(hist, colMetaMap) {
+function renderTrendChart(hist, colMetaMap, maxSensorValue) {
   highlightWrap.innerHTML = '';
 
-  const names = qualifyingTrendSensors(hist);
+  const names = qualifyingTrendSensors(hist, maxSensorValue);
   if (names.length === 0) {
     highlightTitle.textContent = 'Concentracao';
     const p = document.createElement('p');
@@ -552,10 +565,14 @@ function renderTrendChart(hist, colMetaMap) {
 
   highlightTitle.textContent = `Concentracao — sensores ativos (${names.length})`;
 
+  // Pontos acima do limite maximo viram lacunas no grafico (nao sao plotados),
+  // igual as leituras marcadas como nao confiaveis pelo *_Quality.
   const seriesList = names.map((name) => ({
     name,
     displayName: displayNameOf(colMetaMap.get(name), name),
-    points: (hist.series[name] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }))
+    points: (hist.series[name] || [])
+      .filter((pt) => typeof maxSensorValue !== 'number' || pt.value <= maxSensorValue)
+      .map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }))
   }));
   const allPoints = seriesList.flatMap((s) => s.points);
 

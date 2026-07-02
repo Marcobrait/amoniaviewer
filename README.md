@@ -16,6 +16,8 @@ Sistema voltado para manter em cache uma resposta http com resulados de uma cons
    - `DB_SCHEMA`, `DB_TABLE` - tabela consultada (padrao: `dbo.nome_tabela`)
    - `DB_TIMESTAMP_COLUMN` - coluna de data/hora (padrao: `TIMESTAMP`)
    - `RELIABLE_QUALITY_VALUE` - valor da coluna `*_Quality` considerado confiavel (padrao: `192`)
+   - `MAX_SENSOR_VALUE` - leitura acima deste valor e tratada como erro de sensor, igual a valores
+     negativos (padrao: `10000`)
    - `HTTP_PORT` - porta do servidor Node
    - `DEFAULT_GROUP_INTERVAL_MINUTES` - intervalo de agrupamento inicial (minutos)
    - `DEFAULT_UPDATE_INTERVAL_MINUTES` - intervalo de atualizacao incremental inicial (minutos)
