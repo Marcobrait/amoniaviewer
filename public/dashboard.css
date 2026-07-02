@@ -3,135 +3,176 @@ main.dashboard-main {
   max-width: 1320px;
 }
 
-/* overview: hero stat + operational stat tiles side by side */
-.overview-panel {
+/* KPI row: 5 icon tiles (total / falha / alarme / evacuacao / maior leitura) */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.kpi-tile {
   display: flex;
-  align-items: stretch;
-  gap: 28px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  width: 100%;
+}
+
+button.kpi-tile {
+  cursor: pointer;
+  transition: border-color 120ms ease;
+}
+
+button.kpi-tile:hover {
+  border-color: var(--series-1);
+}
+
+.kpi-tile-text {
+  min-width: 0;
+}
+
+.kpi-tile-label {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.kpi-tile-value {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+.kpi-tile-sub {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.kpi-tile-sub.pill {
+  display: inline-block;
+  background: rgba(12, 163, 12, 0.14);
+  color: var(--status-good);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.kpi-tile--good .kpi-tile-icon { background: rgba(12, 163, 12, 0.14); color: var(--status-good); }
+.kpi-tile--warning .kpi-tile-value,
+.kpi-tile--warning .kpi-tile-label { color: var(--status-warning); }
+.kpi-tile--warning .kpi-tile-icon { background: rgba(250, 178, 25, 0.14); color: var(--status-warning); }
+.kpi-tile--serious .kpi-tile-value,
+.kpi-tile--serious .kpi-tile-label { color: var(--status-serious); }
+.kpi-tile--serious .kpi-tile-icon { background: rgba(236, 131, 90, 0.14); color: var(--status-serious); }
+.kpi-tile--critical .kpi-tile-value,
+.kpi-tile--critical .kpi-tile-label { color: var(--status-critical); }
+.kpi-tile--critical .kpi-tile-icon { background: rgba(208, 59, 59, 0.14); color: var(--status-critical); }
+.kpi-tile--info .kpi-tile-value { color: var(--series-1); }
+.kpi-tile--info .kpi-tile-icon { background: rgba(57, 135, 229, 0.14); color: var(--series-1); }
+
+.kpi-tile-icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kpi-tile-icon svg {
+  width: 20px;
+  height: 20px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* overview charts: donut + highlighted sensor with thresholds */
+.overview-charts {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px) 1fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 900px) {
+  .overview-charts { grid-template-columns: 1fr; }
+}
+
+.donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: 20px;
   flex-wrap: wrap;
 }
 
-.hero-tile {
-  flex: 1 1 300px;
+.donut-svg { flex: none; }
+
+.donut-total {
+  font-size: 26px;
+  font-weight: 600;
+  fill: var(--text-primary);
+}
+
+.donut-total-label {
+  font-size: 11px;
+  fill: var(--text-muted);
+}
+
+.donut-legend {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 6px;
-  padding: 4px 28px 4px 0;
-  border-right: 1px solid var(--border);
-  background: none;
-  border-top: none;
-  border-bottom: none;
-  border-left: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 6px;
+  gap: 8px;
+  font-size: 13px;
 }
 
-.hero-tile:hover .hero-sensor {
-  color: var(--series-1);
-}
-
-.hero-tile:focus-visible {
-  outline: 2px solid var(--series-1);
-  outline-offset: 4px;
-}
-
-.hero-label {
-  color: var(--text-muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin: 0;
-}
-
-.hero-value {
-  font-size: 48px;
-  font-weight: 600;
-  line-height: 1.1;
-  color: var(--text-primary);
-}
-
-.hero-meta {
+.donut-legend-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  font-size: 13px;
   color: var(--text-secondary);
 }
 
-.hero-key {
+.donut-legend-dot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
   flex: none;
 }
 
-.hero-sensor {
-  font-weight: 600;
+.donut-legend-count {
   color: var(--text-primary);
-}
-
-.hero-time {
-  color: var(--text-muted);
-}
-
-/* stat tiles */
-.stat-row {
-  flex: 1 1 380px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(140px, 1fr));
-  gap: 12px;
-  align-content: center;
-}
-
-.stat-tile {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.stat-tile .stat-label {
-  color: var(--text-muted);
-  font-size: 12px;
-  margin: 0 0 4px;
-}
-
-.stat-tile .stat-value {
-  font-size: 22px;
   font-weight: 600;
-  margin: 0;
+  margin-left: 4px;
 }
 
-.stat-tile.is-alert-warning {
-  background: rgba(250, 178, 25, 0.14);
-  border-color: var(--status-warning);
-}
-.stat-tile.is-alert-warning .stat-label,
-.stat-tile.is-alert-warning .stat-value {
-  color: var(--status-warning);
+.chart-svg .threshold-line {
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  fill: none;
 }
 
-.stat-tile.is-alert-serious {
-  background: rgba(236, 131, 90, 0.14);
-  border-color: var(--status-serious);
-}
-.stat-tile.is-alert-serious .stat-label,
-.stat-tile.is-alert-serious .stat-value {
-  color: var(--status-serious);
-}
-
-.stat-tile.is-alert-critical {
-  background: rgba(208, 59, 59, 0.14);
-  border-color: var(--status-critical);
-}
-.stat-tile.is-alert-critical .stat-label,
-.stat-tile.is-alert-critical .stat-value {
-  color: var(--status-critical);
+.chart-svg .threshold-label {
+  font-size: 10px;
+  font-weight: 600;
 }
 
 /* panel header + toolbar */
@@ -462,11 +503,3 @@ main.dashboard-main {
 }
 
 .empty-state a { color: var(--series-1); }
-
-@media (max-width: 640px) {
-  .hero-tile {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    padding: 4px 0 16px;
-  }
-}

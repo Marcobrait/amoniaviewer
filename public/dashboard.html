@@ -19,17 +19,17 @@
   </header>
 
   <main class="dashboard-main">
-    <section class="panel overview-panel">
-      <button type="button" class="hero-tile" id="heroTile">
-        <p class="hero-label">Maior leitura nas ultimas 24h</p>
-        <div class="hero-value" id="heroValue">—</div>
-        <div class="hero-meta">
-          <span class="hero-key" id="heroKey"></span>
-          <span class="hero-sensor" id="heroSensor">Sem dados ainda</span>
-          <span class="hero-time" id="heroTime"></span>
-        </div>
-      </button>
-      <div class="stat-row" id="statRow"></div>
+    <section class="kpi-row" id="kpiRow"></section>
+
+    <section class="overview-charts">
+      <div class="panel donut-panel">
+        <div class="panel-header"><h2>Status dos sensores</h2></div>
+        <div id="donutWrap"></div>
+      </div>
+      <div class="panel highlight-panel">
+        <div class="panel-header"><h2 id="highlightTitle">Concentracao</h2></div>
+        <div id="highlightWrap"></div>
+      </div>
     </section>
 
     <section class="panel">

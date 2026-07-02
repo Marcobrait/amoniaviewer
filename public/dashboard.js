@@ -13,16 +13,51 @@ const MAX_SELECTION = 8;
 const REFRESH_MS = 60000;
 
 const headerSubtitle = document.getElementById('headerSubtitle');
-const statRow = document.getElementById('statRow');
+const kpiRow = document.getElementById('kpiRow');
+const donutWrap = document.getElementById('donutWrap');
+const highlightWrap = document.getElementById('highlightWrap');
+const highlightTitle = document.getElementById('highlightTitle');
 const searchInput = document.getElementById('searchInput');
 const selectionHint = document.getElementById('selectionHint');
 const cardSections = document.getElementById('cardSections');
 const detailSections = document.getElementById('detailSections');
-const heroTile = document.getElementById('heroTile');
-const heroValue = document.getElementById('heroValue');
-const heroKey = document.getElementById('heroKey');
-const heroSensor = document.getElementById('heroSensor');
-const heroTime = document.getElementById('heroTime');
+
+const ICON_SHAPES = {
+  signal: [
+    { tag: 'circle', attrs: { cx: 12, cy: 19, r: 1.3, fill: 'currentColor', stroke: 'none' } },
+    { tag: 'path', attrs: { d: 'M8 16.5a5.6 5.6 0 0 1 8 0' } },
+    { tag: 'path', attrs: { d: 'M4.5 13a10.5 10.5 0 0 1 15 0' } }
+  ],
+  'alert-triangle': [
+    { tag: 'path', attrs: { d: 'M12 3.5 21.5 20 2.5 20 Z' } },
+    { tag: 'line', attrs: { x1: 12, y1: 9.5, x2: 12, y2: 14.5 } },
+    { tag: 'circle', attrs: { cx: 12, cy: 17.3, r: 0.9, fill: 'currentColor', stroke: 'none' } }
+  ],
+  bell: [
+    { tag: 'path', attrs: { d: 'M12 4.5a5.5 5.5 0 0 0-5.5 5.5c0 5.5-2.3 7-2.3 7h15.6s-2.3-1.5-2.3-7A5.5 5.5 0 0 0 12 4.5Z' } },
+    { tag: 'path', attrs: { d: 'M9.8 19.5a2.3 2.3 0 0 0 4.4 0' } }
+  ],
+  'alert-octagon': [
+    { tag: 'path', attrs: { d: 'M8 2.5h8L21.5 8v8L16 21.5H8L2.5 16V8Z' } },
+    { tag: 'line', attrs: { x1: 12, y1: 8.5, x2: 12, y2: 13 } },
+    { tag: 'circle', attrs: { cx: 12, cy: 16, r: 0.9, fill: 'currentColor', stroke: 'none' } }
+  ],
+  'trending-up': [
+    { tag: 'polyline', attrs: { points: '3,17 9.5,10.5 13.5,14.5 21,6' } },
+    { tag: 'polyline', attrs: { points: '15,6 21,6 21,12' } }
+  ]
+};
+
+function buildStatIcon(kind) {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  for (const shape of ICON_SHAPES[kind] || []) {
+    const el = document.createElementNS(SVG_NS, shape.tag);
+    for (const key of Object.keys(shape.attrs)) el.setAttribute(key, shape.attrs[key]);
+    svg.appendChild(el);
+  }
+  return svg;
+}
 
 let latestHistory = null;
 let latestColumns = null;
@@ -235,15 +270,19 @@ function render() {
   const hist = latestHistory;
   const cols = latestColumns;
 
-  headerSubtitle.textContent = `Dados atualizados as ${formatDateTime(hist.generatedAt)} (cache do servidor).`;
+  headerSubtitle.textContent =
+    `Dados atualizados as ${formatDateTime(hist.generatedAt)} (cache do servidor) — ` +
+    `agrupado a cada ${hist.groupIntervalMinutes} min, atualizado a cada ${hist.updateIntervalMinutes} min.`;
 
   currentColMeta = new Map((cols.columns || []).map((c) => [c.name, c]));
   currentTop = computeTopReading(hist, currentColMeta);
-  renderHero(currentTop);
   currentStatus = computeStatusSummary(hist, currentColMeta);
 
+  renderKpiRow(hist, currentColMeta, currentTop, currentStatus);
+  renderDonut(currentStatus);
+  renderHighlightChart(currentTop, hist, currentColMeta);
+
   if (hist.columns.length === 0) {
-    renderStatTiles(hist, currentStatus);
     cardSections.innerHTML = '';
     const p = document.createElement('p');
     p.className = 'empty-state';
@@ -268,64 +307,426 @@ function render() {
     }
   }
 
-  renderStatTiles(hist, currentStatus);
   setHint(defaultHintText());
   renderCards(hist, currentColMeta, currentTop, currentStatus);
   renderDetailSections(hist, currentColMeta);
 }
 
-function renderHero(top) {
-  if (!top) {
-    heroValue.textContent = '—';
-    heroKey.style.background = 'transparent';
-    heroSensor.textContent = 'Sem leituras confiaveis nas ultimas 24h';
-    heroTime.textContent = '';
-    heroTile.disabled = true;
-    return;
+function buildKpiTile(opts) {
+  const tile = document.createElement(opts.onClick ? 'button' : 'div');
+  tile.className = 'kpi-tile kpi-tile--' + opts.kind;
+  if (opts.onClick) {
+    tile.type = 'button';
+    tile.addEventListener('click', opts.onClick);
   }
-  heroTile.disabled = false;
-  heroValue.textContent = formatValue(top.value);
-  heroKey.style.background = seriesColor(top.name);
-  heroSensor.textContent = top.displayName;
-  heroTime.textContent = `em ${formatDateTime(top.timestamp)}`;
+
+  const text = document.createElement('div');
+  text.className = 'kpi-tile-text';
+
+  const label = document.createElement('p');
+  label.className = 'kpi-tile-label';
+  label.textContent = opts.label;
+  text.appendChild(label);
+
+  const value = document.createElement('p');
+  value.className = 'kpi-tile-value';
+  value.textContent = opts.value;
+  text.appendChild(value);
+
+  if (opts.subPill) {
+    const sub = document.createElement('span');
+    sub.className = 'kpi-tile-sub pill';
+    sub.textContent = opts.subPill;
+    text.appendChild(sub);
+  } else if (opts.sub) {
+    const sub = document.createElement('p');
+    sub.className = 'kpi-tile-sub';
+    sub.textContent = opts.sub;
+    text.appendChild(sub);
+  }
+
+  tile.appendChild(text);
+
+  const iconWrap = document.createElement('div');
+  iconWrap.className = 'kpi-tile-icon';
+  iconWrap.appendChild(buildStatIcon(opts.icon));
+  tile.appendChild(iconWrap);
+
+  return tile;
 }
 
-function renderStatTiles(hist, status) {
-  const tiles = [
-    { label: 'Sensores habilitados', value: String(hist.columns.length) },
-    {
-      label: 'Sensores em falha',
-      value: `${status.counts.failure}/${status.total}`,
-      alertClass: status.counts.failure > 0 ? 'is-alert-serious' : null
-    },
-    {
-      label: 'Sensores em alarme',
-      value: `${status.counts.alarm}/${status.total}`,
-      alertClass: status.counts.alarm > 0 ? 'is-alert-warning' : null
-    },
-    {
-      label: 'Sensores em evacuacao',
-      value: `${status.counts.evacuation}/${status.total}`,
-      alertClass: status.counts.evacuation > 0 ? 'is-alert-critical' : null
-    },
-    { label: 'Selecionados p/ comparar', value: `${selectedNames.size}/${MAX_SELECTION}` },
-    { label: 'Intervalo de agrupamento', value: `${hist.groupIntervalMinutes} min` },
-    { label: 'Intervalo de atualizacao', value: `${hist.updateIntervalMinutes} min` }
+function renderKpiRow(hist, colMetaMap, top, status) {
+  kpiRow.innerHTML = '';
+
+  const reliableCount = hist.columns.filter((n) => {
+    const meta = colMetaMap.get(n);
+    return meta && meta.reliable;
+  }).length;
+  const reliablePct = hist.columns.length ? Math.round((reliableCount / hist.columns.length) * 100) : 0;
+  const pct = (n) => (status.total ? Math.round((n / status.total) * 100) : 0);
+
+  kpiRow.appendChild(
+    buildKpiTile({
+      kind: 'good',
+      icon: 'signal',
+      label: 'Total de sensores',
+      value: String(hist.columns.length),
+      subPill: `${reliableCount} confiaveis (${reliablePct}%)`
+    })
+  );
+
+  kpiRow.appendChild(
+    buildKpiTile({
+      kind: 'serious',
+      icon: 'alert-triangle',
+      label: 'Sensor em falha',
+      value: String(status.counts.failure),
+      sub: `${pct(status.counts.failure)}% do total`
+    })
+  );
+
+  kpiRow.appendChild(
+    buildKpiTile({
+      kind: 'warning',
+      icon: 'bell',
+      label: 'Alarmes ativos',
+      value: String(status.counts.alarm),
+      sub: `${pct(status.counts.alarm)}% do total`
+    })
+  );
+
+  kpiRow.appendChild(
+    buildKpiTile({
+      kind: 'critical',
+      icon: 'alert-octagon',
+      label: 'Em evacuacao',
+      value: String(status.counts.evacuation),
+      sub: `${pct(status.counts.evacuation)}% do total`
+    })
+  );
+
+  kpiRow.appendChild(
+    buildKpiTile({
+      kind: 'info',
+      icon: 'trending-up',
+      label: 'Concentracao maxima',
+      value: top ? formatValue(top.value) : '—',
+      sub: top ? top.displayName : 'Sem leituras confiaveis',
+      onClick: top
+        ? () => {
+            const card = document.querySelector(`.sensor-card[data-sensor="${CSS.escape(top.name)}"]`);
+            if (!card) return;
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.classList.remove('is-flash');
+            void card.offsetWidth;
+            card.classList.add('is-flash');
+          }
+        : undefined
+    })
+  );
+}
+
+function buildDonutChart(status) {
+  const wrap = document.createElement('div');
+  wrap.className = 'donut-wrap';
+
+  const total = status.total;
+  const normal = Math.max(0, total - status.counts.alarm - status.counts.evacuation - status.counts.failure);
+  const segments = [
+    { label: 'Normal', count: normal, color: 'var(--status-good)' },
+    { label: 'Alarme', count: status.counts.alarm, color: 'var(--status-warning)' },
+    { label: 'Evacuacao', count: status.counts.evacuation, color: 'var(--status-critical)' },
+    { label: 'Falha', count: status.counts.failure, color: 'var(--status-serious)' }
   ];
-  statRow.innerHTML = '';
-  for (const tile of tiles) {
-    const div = document.createElement('div');
-    div.className = 'stat-tile' + (tile.alertClass ? ' ' + tile.alertClass : '');
-    const label = document.createElement('p');
-    label.className = 'stat-label';
-    label.textContent = tile.label;
-    const value = document.createElement('p');
-    value.className = 'stat-value';
-    value.textContent = tile.value;
-    div.appendChild(label);
-    div.appendChild(value);
-    statRow.appendChild(div);
+
+  const size = 160;
+  const r = 60;
+  const cx = 80;
+  const cy = 80;
+  const strokeWidth = 20;
+  const circumference = 2 * Math.PI * r;
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'donut-svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+
+  const track = document.createElementNS(SVG_NS, 'circle');
+  track.setAttribute('cx', String(cx));
+  track.setAttribute('cy', String(cy));
+  track.setAttribute('r', String(r));
+  track.setAttribute('fill', 'none');
+  track.setAttribute('stroke', 'var(--gridline)');
+  track.setAttribute('stroke-width', String(strokeWidth));
+  svg.appendChild(track);
+
+  let offset = 0;
+  for (const seg of segments) {
+    if (seg.count <= 0 || total <= 0) continue;
+    const len = (seg.count / total) * circumference;
+    const circle = document.createElementNS(SVG_NS, 'circle');
+    circle.setAttribute('cx', String(cx));
+    circle.setAttribute('cy', String(cy));
+    circle.setAttribute('r', String(r));
+    circle.setAttribute('fill', 'none');
+    circle.setAttribute('stroke', seg.color);
+    circle.setAttribute('stroke-width', String(strokeWidth));
+    circle.setAttribute('stroke-dasharray', `${len.toFixed(2)} ${(circumference - len).toFixed(2)}`);
+    circle.setAttribute('stroke-dashoffset', String(-offset));
+    circle.setAttribute('transform', `rotate(-90 ${cx} ${cy})`);
+    svg.appendChild(circle);
+    offset += len;
   }
+
+  const totalText = document.createElementNS(SVG_NS, 'text');
+  totalText.setAttribute('x', String(cx));
+  totalText.setAttribute('y', String(cy - 2));
+  totalText.setAttribute('text-anchor', 'middle');
+  totalText.setAttribute('class', 'donut-total');
+  totalText.textContent = String(total);
+  svg.appendChild(totalText);
+
+  const totalLabel = document.createElementNS(SVG_NS, 'text');
+  totalLabel.setAttribute('x', String(cx));
+  totalLabel.setAttribute('y', String(cy + 16));
+  totalLabel.setAttribute('text-anchor', 'middle');
+  totalLabel.setAttribute('class', 'donut-total-label');
+  totalLabel.textContent = 'Total';
+  svg.appendChild(totalLabel);
+
+  wrap.appendChild(svg);
+
+  const legend = document.createElement('div');
+  legend.className = 'donut-legend';
+  for (const seg of segments) {
+    const item = document.createElement('div');
+    item.className = 'donut-legend-item';
+    const dot = document.createElement('span');
+    dot.className = 'donut-legend-dot';
+    dot.style.background = seg.color;
+    const label = document.createElement('span');
+    label.textContent = seg.label;
+    const count = document.createElement('span');
+    count.className = 'donut-legend-count';
+    count.textContent = `(${seg.count})`;
+    item.appendChild(dot);
+    item.appendChild(label);
+    item.appendChild(count);
+    legend.appendChild(item);
+  }
+  wrap.appendChild(legend);
+
+  return wrap;
+}
+
+function renderDonut(status) {
+  donutWrap.innerHTML = '';
+  donutWrap.appendChild(buildDonutChart(status));
+}
+
+function renderHighlightChart(top, hist, colMetaMap) {
+  highlightWrap.innerHTML = '';
+
+  if (!top) {
+    highlightTitle.textContent = 'Concentracao';
+    const p = document.createElement('p');
+    p.className = 'empty-state';
+    p.textContent = 'Sem leituras confiaveis nas ultimas 24h.';
+    highlightWrap.appendChild(p);
+    return;
+  }
+
+  const meta = colMetaMap.get(top.name);
+  highlightTitle.textContent = `Concentracao — ${top.displayName}`;
+
+  const points = (hist.series[top.name] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }));
+  const alarmSp = meta ? meta.alarmSetpoint : 10;
+  const evacSp = meta ? meta.evacuationSetpoint : 20;
+
+  const width = 760;
+  const height = 260;
+  const margin = { top: 12, right: 60, bottom: 30, left: 50 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+
+  const minT = Math.min(...points.map((p) => p.t));
+  const maxT = Math.max(...points.map((p) => p.t));
+  const valuesForDomain = points.map((p) => p.v).concat([alarmSp, evacSp]);
+  const yTicks = niceTicks(Math.min(...valuesForDomain), Math.max(...valuesForDomain), 5);
+  const yMin = yTicks[0];
+  const yMax = yTicks[yTicks.length - 1];
+
+  const xScale = (t) => margin.left + (maxT === minT ? 0 : ((t - minT) / (maxT - minT)) * plotWidth);
+  const yScale = (v) => margin.top + plotHeight - (yMax === yMin ? 0 : ((v - yMin) / (yMax - yMin)) * plotHeight);
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-wrap';
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'chart-svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  wrap.appendChild(svg);
+
+  for (const tick of yTicks) {
+    const y = yScale(tick);
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('class', 'gridline');
+    line.setAttribute('x1', String(margin.left));
+    line.setAttribute('x2', String(width - margin.right));
+    line.setAttribute('y1', y.toFixed(2));
+    line.setAttribute('y2', y.toFixed(2));
+    svg.appendChild(line);
+
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'axis-label');
+    label.setAttribute('x', String(margin.left - 8));
+    label.setAttribute('y', (y + 3).toFixed(2));
+    label.setAttribute('text-anchor', 'end');
+    label.textContent = tick.toString();
+    svg.appendChild(label);
+  }
+
+  const baseline = document.createElementNS(SVG_NS, 'line');
+  baseline.setAttribute('class', 'baseline');
+  baseline.setAttribute('x1', String(margin.left));
+  baseline.setAttribute('x2', String(width - margin.right));
+  baseline.setAttribute('y1', String(margin.top + plotHeight));
+  baseline.setAttribute('y2', String(margin.top + plotHeight));
+  svg.appendChild(baseline);
+
+  const xTickCount = 6;
+  for (let i = 0; i <= xTickCount; i++) {
+    const t = minT + ((maxT - minT) * i) / xTickCount;
+    const x = xScale(t);
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'axis-label');
+    label.setAttribute('x', x.toFixed(2));
+    label.setAttribute('y', String(height - margin.bottom + 16));
+    label.setAttribute('text-anchor', i === 0 ? 'start' : i === xTickCount ? 'end' : 'middle');
+    label.textContent = formatTimeShort(t);
+    svg.appendChild(label);
+  }
+
+  function addThreshold(value, color, labelText) {
+    if (value < yMin || value > yMax) return;
+    const y = yScale(value);
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('class', 'threshold-line');
+    line.setAttribute('x1', String(margin.left));
+    line.setAttribute('x2', String(width - margin.right));
+    line.setAttribute('y1', y.toFixed(2));
+    line.setAttribute('y2', y.toFixed(2));
+    line.setAttribute('stroke', color);
+    svg.appendChild(line);
+
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'threshold-label');
+    label.setAttribute('x', String(width - margin.right + 6));
+    label.setAttribute('y', (y + 3).toFixed(2));
+    label.setAttribute('fill', color);
+    label.textContent = labelText;
+    svg.appendChild(label);
+  }
+  addThreshold(alarmSp, 'var(--status-warning)', 'Alarme');
+  addThreshold(evacSp, 'var(--status-critical)', 'Evacuacao');
+
+  const lineColor = 'var(--series-1)';
+  const expectedGapMs = hist.groupIntervalMinutes * 60 * 1000;
+  const baselineY = margin.top + plotHeight;
+  for (const seg of buildSegmentsByGap(points, expectedGapMs)) {
+    const area = document.createElementNS(SVG_NS, 'path');
+    area.setAttribute('d', areaPathFromSegment(seg, xScale, yScale, baselineY));
+    area.setAttribute('fill', lineColor);
+    area.setAttribute('fill-opacity', '0.1');
+    area.setAttribute('stroke', 'none');
+    svg.appendChild(area);
+
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('class', 'series-line');
+    path.setAttribute('d', pathFromSegment(seg, xScale, yScale));
+    path.setAttribute('stroke', lineColor);
+    svg.appendChild(path);
+  }
+
+  if (points.length > 0) {
+    const last = points[points.length - 1];
+    const dot = document.createElementNS(SVG_NS, 'circle');
+    dot.setAttribute('class', 'series-dot');
+    dot.setAttribute('cx', xScale(last.t).toFixed(2));
+    dot.setAttribute('cy', yScale(last.v).toFixed(2));
+    dot.setAttribute('r', '4');
+    dot.setAttribute('fill', lineColor);
+    svg.appendChild(dot);
+  }
+
+  const crosshair = document.createElementNS(SVG_NS, 'line');
+  crosshair.setAttribute('class', 'crosshair');
+  crosshair.setAttribute('y1', String(margin.top));
+  crosshair.setAttribute('y2', String(margin.top + plotHeight));
+  svg.appendChild(crosshair);
+
+  const hoverRect = document.createElementNS(SVG_NS, 'rect');
+  hoverRect.setAttribute('class', 'hover-rect');
+  hoverRect.setAttribute('x', String(margin.left));
+  hoverRect.setAttribute('y', String(margin.top));
+  hoverRect.setAttribute('width', String(plotWidth));
+  hoverRect.setAttribute('height', String(plotHeight));
+  svg.appendChild(hoverRect);
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'chart-tooltip';
+  wrap.appendChild(tooltip);
+
+  const timestamps = points.map((p) => p.t).sort((a, b) => a - b);
+  const pointMap = new Map(points.map((p) => [p.t, p.v]));
+
+  function showTooltip(evt) {
+    if (timestamps.length === 0) return;
+    const rect = svg.getBoundingClientRect();
+    const svgX = ((evt.clientX - rect.left) / rect.width) * width;
+    const t = minT + ((svgX - margin.left) / plotWidth) * (maxT - minT);
+    const nearestT = nearestTimestamp(t, timestamps);
+
+    crosshair.setAttribute('x1', xScale(nearestT).toFixed(2));
+    crosshair.setAttribute('x2', xScale(nearestT).toFixed(2));
+    crosshair.style.opacity = '1';
+
+    tooltip.innerHTML = '';
+    const timeEl = document.createElement('div');
+    timeEl.className = 'tooltip-time';
+    timeEl.textContent = formatDateTime(nearestT);
+    tooltip.appendChild(timeEl);
+
+    const row = document.createElement('div');
+    row.className = 'tooltip-row';
+    const key = document.createElement('span');
+    key.className = 'tooltip-key';
+    key.style.background = lineColor;
+    const nameEl = document.createElement('span');
+    nameEl.textContent = top.displayName;
+    const valueEl = document.createElement('span');
+    valueEl.className = 'tooltip-value';
+    valueEl.textContent = formatValue(pointMap.get(nearestT));
+    row.appendChild(key);
+    row.appendChild(nameEl);
+    row.appendChild(valueEl);
+    tooltip.appendChild(row);
+
+    const wrapRect = wrap.getBoundingClientRect();
+    tooltip.style.left = `${evt.clientX - wrapRect.left}px`;
+    tooltip.style.top = `${evt.clientY - wrapRect.top - 12}px`;
+    tooltip.style.opacity = '1';
+  }
+  function hideTooltip() {
+    crosshair.style.opacity = '0';
+    tooltip.style.opacity = '0';
+  }
+  hoverRect.addEventListener('pointermove', showTooltip);
+  hoverRect.addEventListener('pointerleave', hideTooltip);
+
+  highlightWrap.appendChild(wrap);
 }
 
 function makeBadge(kind, text) {
@@ -460,7 +861,6 @@ function toggleSelection(name, checkbox) {
     selectedNames.delete(name);
   }
   setHint(defaultHintText());
-  renderStatTiles(latestHistory, currentStatus);
   renderCards(latestHistory, currentColMeta, currentTop, currentStatus);
   renderDetailSections(latestHistory, currentColMeta);
 }
@@ -841,16 +1241,6 @@ function buildDetailTable(seriesList, masterTimestamps, pointMaps) {
 searchInput.addEventListener('input', () => {
   searchTerm = searchInput.value;
   if (latestHistory) renderCards(latestHistory, currentColMeta, currentTop, currentStatus);
-});
-
-heroTile.addEventListener('click', () => {
-  if (!currentTop) return;
-  const card = document.querySelector(`.sensor-card[data-sensor="${CSS.escape(currentTop.name)}"]`);
-  if (!card) return;
-  card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  card.classList.remove('is-flash');
-  void card.offsetWidth; // restart the flash animation even if it just ran
-  card.classList.add('is-flash');
 });
 
 loadData();
