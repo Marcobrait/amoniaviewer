@@ -1,0 +1,96 @@
+# Amonia Viewer
+
+Sistema Node.js para monitorar sensores de amonia armazenados em uma tabela SQL Server,
+com tela de configuracao de colunas e endpoint HTTP de historico agrupado das ultimas 24 horas.
+
+## Configuracao
+
+1. Copie `.env.example` para `.env` e ajuste os dados de conexao com o banco:
+
+   ```
+   copy .env.example .env
+   ```
+
+   Principais variaveis:
+   - `DB_SERVER`, `DB_PORT`, `DB_DATABASE`, `DB_USER`, `DB_PASSWORD` - conexao SQL Server
+   - `DB_SCHEMA`, `DB_TABLE` - tabela consultada (padrao: `dbo.tab_monitor_sensores_amonia`)
+   - `DB_TIMESTAMP_COLUMN` - coluna de data/hora (padrao: `E3TimeStamp`)
+   - `RELIABLE_QUALITY_VALUE` - valor da coluna `*_Quality` considerado confiavel (padrao: `192`)
+   - `HTTP_PORT` - porta do servidor Node
+   - `DEFAULT_GROUP_INTERVAL_MINUTES` - intervalo de agrupamento inicial (minutos)
+   - `DEFAULT_UPDATE_INTERVAL_MINUTES` - intervalo de atualizacao incremental inicial (minutos)
+   - `HISTORY_HOURS` - janela de historico mantida (padrao 24h)
+
+   Esses dois ultimos intervalos (agrupamento e atualizacao) tambem podem ser alterados
+   depois pela propria tela de configuracao, sem precisar reiniciar o servidor.
+
+2. Instale as dependencias:
+
+   ```
+   npm install
+   ```
+
+3. Rode o servidor:
+
+   ```
+   npm start
+   ```
+
+4. Acesse `http://localhost:3000` para abrir a tela de configuracao.
+
+## Como funciona
+
+- **Descoberta de colunas**: o sistema le `INFORMATION_SCHEMA.COLUMNS` da tabela configurada
+  e pareia automaticamente cada coluna de sensor com sua coluna `_Quality` correspondente.
+- **Tela de configuracao** (`/`): lista todas as colunas encontradas com o ultimo valor lido,
+  indicando se a leitura e confiavel (`*_Quality = RELIABLE_QUALITY_VALUE`), e permite marcar
+  quais colunas devem ser expostas no endpoint de historico, alem dos intervalos de
+  agrupamento e atualizacao. O botao "Salvar configuracao" persiste tudo em
+  `config/settings.json` e reinicia o processo de coleta com os novos parametros.
+- **Coleta incremental**: ao salvar (ou ao iniciar o servidor), o sistema carrega o historico
+  completo das ultimas `HISTORY_HOURS` horas para as colunas habilitadas, agrupando por
+  `groupIntervalMinutes` e trazendo o valor MAXIMO de cada sensor dentro do intervalo,
+  desconsiderando leituras cuja coluna `*_Quality` nao seja confiavel. Depois disso, a cada
+  `updateIntervalMinutes` minutos o sistema consulta **apenas os registros novos** (usando
+  `WITH (NOLOCK)` e filtro por timestamp), atualiza os baldes correspondentes no cache em
+  memoria e descarta os baldes que saíram da janela de 24 horas. Isso evita consultas pesadas
+  repetidas no banco de producao.
+- **Endpoint HTTP** (`GET /api/history`): retorna o JSON servido diretamente do cache em
+  memoria (sem tocar no banco a cada requisicao), no formato:
+
+  ```json
+  {
+    "generatedAt": "2026-07-02T12:00:00.000Z",
+    "historyHours": 24,
+    "groupIntervalMinutes": 10,
+    "updateIntervalMinutes": 10,
+    "columns": ["SensorAmonia001", "SensorAmonia002"],
+    "series": {
+      "SensorAmonia001": [{ "timestamp": "2026-07-01T12:00:00.000Z", "value": 12.3 }, ...],
+      "SensorAmonia002": [...]
+    }
+  }
+  ```
+
+## Endpoints
+
+| Metodo | Rota            | Descricao |
+|--------|-----------------|-----------|
+| GET    | `/api/columns`  | Lista colunas de sensor, ultimo valor/qualidade e estado habilitado |
+| GET    | `/api/config`   | Configuracao atualmente salva |
+| POST   | `/api/config`   | Salva colunas habilitadas + intervalos e reinicia a coleta |
+| GET    | `/api/history`  | Historico agrupado (24h) das colunas habilitadas, servido do cache |
+| GET    | `/api/health`   | Healthcheck simples |
+
+## Estrutura
+
+```
+src/
+  config/     # env.js (leitura do .env) e settingsStore.js (config/settings.json)
+  db/         # pool.js, schema.js (descoberta de colunas) e history.js (queries agrupadas)
+  services/   # scheduler.js (cache em memoria + polling incremental)
+  routes/     # rotas Express
+  server.js   # bootstrap
+public/       # tela de configuracao (HTML/CSS/JS puro)
+config/       # settings.json gerado em runtime (git-ignored)
+```
