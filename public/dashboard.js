@@ -30,7 +30,8 @@ let selectedNames = new Set();
 let selectionInitialized = false;
 let searchTerm = '';
 let currentTop = null;
-let currentFailures = { count: 0, total: 0, names: new Set() };
+let currentColMeta = new Map();
+let currentStatus = { counts: { failure: 0, alarm: 0, evacuation: 0 }, total: 0, statusByName: new Map() };
 
 // ---------- formatting helpers ----------
 
@@ -70,34 +71,53 @@ function seriesColor(name) {
   return SERIES_COLORS[idx];
 }
 
+function displayNameOf(meta, name) {
+  return meta && meta.displayName ? meta.displayName : name;
+}
+
 // Scans every enabled sensor's 24h series and returns the single highest
 // reading found (the hero stat), or null if there is no data at all yet.
-function computeTopReading(hist) {
+function computeTopReading(hist, colMetaMap) {
   let top = null;
   for (const name of hist.columns) {
     const points = hist.series[name] || [];
     for (const pt of points) {
       if (pt.value === null || pt.value === undefined) continue;
       if (!top || pt.value > top.value) {
-        top = { name, value: pt.value, timestamp: pt.timestamp };
+        top = { name, displayName: displayNameOf(colMetaMap.get(name), name), value: pt.value, timestamp: pt.timestamp };
       }
     }
   }
   return top;
 }
 
-// A sensor is considered in failure when its latest reading is negative
-// (out-of-range for these sensors, regardless of the *_Quality flag).
-function computeFailureSummary(hist) {
-  const names = new Set();
+// Estado de um sensor a partir da sua ultima leitura:
+//  - failure: leitura negativa (fora de faixa / falha do sensor)
+//  - evacuation: acima do setpoint de evacuacao
+//  - alarm: acima do setpoint de alarme (e abaixo do de evacuacao)
+//  - normal: dentro da faixa esperada
+// Mutuamente exclusivos - nunca mais de um se aplica ao mesmo tempo.
+function sensorStatus(value, meta) {
+  if (value === null || value === undefined || Number.isNaN(value)) return 'unknown';
+  if (value < 0) return 'failure';
+  const alarm = meta ? meta.alarmSetpoint : 10;
+  const evacuation = meta ? meta.evacuationSetpoint : 20;
+  if (typeof evacuation === 'number' && value > evacuation) return 'evacuation';
+  if (typeof alarm === 'number' && value > alarm) return 'alarm';
+  return 'normal';
+}
+
+function computeStatusSummary(hist, colMetaMap) {
+  const counts = { failure: 0, alarm: 0, evacuation: 0 };
+  const statusByName = new Map();
   for (const name of hist.columns) {
     const points = hist.series[name] || [];
     const last = points.length ? points[points.length - 1] : null;
-    if (last && typeof last.value === 'number' && last.value < 0) {
-      names.add(name);
-    }
+    const status = sensorStatus(last ? last.value : null, colMetaMap.get(name));
+    statusByName.set(name, status);
+    if (status === 'failure' || status === 'alarm' || status === 'evacuation') counts[status]++;
   }
-  return { count: names.size, total: hist.columns.length, names };
+  return { counts, total: hist.columns.length, statusByName };
 }
 
 function defaultHintText() {
@@ -217,12 +237,13 @@ function render() {
 
   headerSubtitle.textContent = `Dados atualizados as ${formatDateTime(hist.generatedAt)} (cache do servidor).`;
 
-  currentTop = computeTopReading(hist);
+  currentColMeta = new Map((cols.columns || []).map((c) => [c.name, c]));
+  currentTop = computeTopReading(hist, currentColMeta);
   renderHero(currentTop);
-  currentFailures = computeFailureSummary(hist);
+  currentStatus = computeStatusSummary(hist, currentColMeta);
 
   if (hist.columns.length === 0) {
-    renderStatTiles(hist, currentFailures);
+    renderStatTiles(hist, currentStatus);
     cardSections.innerHTML = '';
     const p = document.createElement('p');
     p.className = 'empty-state';
@@ -247,10 +268,10 @@ function render() {
     }
   }
 
-  renderStatTiles(hist, currentFailures);
+  renderStatTiles(hist, currentStatus);
   setHint(defaultHintText());
-  renderCards(hist, cols, currentTop, currentFailures);
-  renderDetailSections(hist);
+  renderCards(hist, currentColMeta, currentTop, currentStatus);
+  renderDetailSections(hist, currentColMeta);
 }
 
 function renderHero(top) {
@@ -265,18 +286,27 @@ function renderHero(top) {
   heroTile.disabled = false;
   heroValue.textContent = formatValue(top.value);
   heroKey.style.background = seriesColor(top.name);
-  heroSensor.textContent = top.name;
+  heroSensor.textContent = top.displayName;
   heroTime.textContent = `em ${formatDateTime(top.timestamp)}`;
 }
 
-function renderStatTiles(hist, failures) {
-  const hasFailures = failures.count > 0;
+function renderStatTiles(hist, status) {
   const tiles = [
     { label: 'Sensores habilitados', value: String(hist.columns.length) },
     {
       label: 'Sensores em falha',
-      value: `${failures.count}/${failures.total}`,
-      alert: hasFailures
+      value: `${status.counts.failure}/${status.total}`,
+      alertClass: status.counts.failure > 0 ? 'is-alert-serious' : null
+    },
+    {
+      label: 'Sensores em alarme',
+      value: `${status.counts.alarm}/${status.total}`,
+      alertClass: status.counts.alarm > 0 ? 'is-alert-warning' : null
+    },
+    {
+      label: 'Sensores em evacuacao',
+      value: `${status.counts.evacuation}/${status.total}`,
+      alertClass: status.counts.evacuation > 0 ? 'is-alert-critical' : null
     },
     { label: 'Selecionados p/ comparar', value: `${selectedNames.size}/${MAX_SELECTION}` },
     { label: 'Intervalo de agrupamento', value: `${hist.groupIntervalMinutes} min` },
@@ -285,7 +315,7 @@ function renderStatTiles(hist, failures) {
   statRow.innerHTML = '';
   for (const tile of tiles) {
     const div = document.createElement('div');
-    div.className = 'stat-tile' + (tile.alert ? ' is-alert' : '');
+    div.className = 'stat-tile' + (tile.alertClass ? ' ' + tile.alertClass : '');
     const label = document.createElement('p');
     label.className = 'stat-label';
     label.textContent = tile.label;
@@ -298,10 +328,19 @@ function renderStatTiles(hist, failures) {
   }
 }
 
-function renderCards(hist, cols, topReading, failures) {
-  const colMetaMap = new Map((cols.columns || []).map((c) => [c.name, c]));
+function makeBadge(kind, text) {
+  const el = document.createElement('span');
+  el.className = 'badge ' + kind;
+  el.textContent = text;
+  return el;
+}
+
+function renderCards(hist, colMetaMap, topReading, status) {
   const term = searchTerm.trim().toLowerCase();
-  const names = hist.columns.filter((n) => n.toLowerCase().includes(term));
+  const names = hist.columns.filter((n) => {
+    const label = displayNameOf(colMetaMap.get(n), n).toLowerCase();
+    return n.toLowerCase().includes(term) || label.includes(term);
+  });
 
   cardSections.innerHTML = '';
   if (names.length === 0) {
@@ -337,65 +376,64 @@ function renderCards(hist, cols, topReading, failures) {
     for (const name of groupNames) {
       const points = (hist.series[name] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }));
       const isTop = Boolean(topReading && topReading.name === name);
-      const isFailure = failures.names.has(name);
-      grid.appendChild(buildCard(name, points, colMetaMap.get(name), hist.groupIntervalMinutes, isTop, isFailure));
+      const sensorStat = status.statusByName.get(name) || 'normal';
+      grid.appendChild(buildCard(name, points, colMetaMap.get(name), hist.groupIntervalMinutes, isTop, sensorStat));
     }
     block.appendChild(grid);
     cardSections.appendChild(block);
   }
 }
 
-function buildCard(name, points, meta, groupIntervalMinutes, isTop, isFailure) {
+function buildCard(name, points, meta, groupIntervalMinutes, isTop, status) {
   const card = document.createElement('div');
+  const statusClass = status === 'alarm' || status === 'evacuation' || status === 'failure' ? ' status-' + status : '';
   card.className =
     'sensor-card' +
     (selectedNames.has(name) ? ' is-selected' : '') +
     (isTop ? ' is-top' : '') +
-    (isFailure ? ' is-failure' : '');
+    statusClass;
   card.dataset.sensor = name;
 
   const top = document.createElement('div');
   top.className = 'card-top';
 
+  const displayName = displayNameOf(meta, name);
   const nameEl = document.createElement('span');
   nameEl.className = 'card-name';
-  nameEl.title = name;
-  nameEl.textContent = name;
+  nameEl.title = displayName !== name ? `${displayName} (${name})` : name;
+  nameEl.textContent = displayName;
   top.appendChild(nameEl);
 
   const badges = document.createElement('span');
   badges.className = 'card-badges';
 
-  if (isFailure) {
-    const failureBadge = document.createElement('span');
-    failureBadge.className = 'badge critical';
-    failureBadge.textContent = 'Em falha';
-    badges.appendChild(failureBadge);
+  if (status === 'evacuation') {
+    badges.appendChild(makeBadge('critical', 'Evacuacao'));
+  } else if (status === 'alarm') {
+    badges.appendChild(makeBadge('warning', 'Alarme'));
+  } else if (status === 'failure') {
+    badges.appendChild(makeBadge('serious', 'Em falha'));
   }
 
   if (isTop) {
-    const topBadge = document.createElement('span');
-    topBadge.className = 'badge neutral';
-    topBadge.textContent = 'Maior 24h';
-    badges.appendChild(topBadge);
+    badges.appendChild(makeBadge('neutral', 'Maior 24h'));
   }
 
   const reliable = meta ? meta.reliable : false;
-  const badge = document.createElement('span');
-  badge.className = 'badge ' + (reliable ? 'ok' : 'bad');
-  badge.textContent = reliable ? 'Confiavel' : 'Nao confiavel';
-  badges.appendChild(badge);
+  badges.appendChild(makeBadge(reliable ? 'ok' : 'bad', reliable ? 'Confiavel' : 'Nao confiavel'));
 
   top.appendChild(badges);
   card.appendChild(top);
 
+  const valueTextClass =
+    status === 'evacuation' ? ' text-critical' : status === 'alarm' ? ' text-warning' : status === 'failure' ? ' text-serious' : '';
   const valueEl = document.createElement('div');
-  valueEl.className = 'card-value' + (isFailure ? ' is-critical' : '');
+  valueEl.className = 'card-value' + valueTextClass;
   const last = points.length ? points[points.length - 1] : null;
   valueEl.textContent = last ? formatValue(last.v) : '—';
   card.appendChild(valueEl);
 
-  card.appendChild(buildSparkline(points, groupIntervalMinutes, isFailure));
+  card.appendChild(buildSparkline(points, groupIntervalMinutes, status));
 
   const label = document.createElement('label');
   label.className = 'card-select';
@@ -422,13 +460,20 @@ function toggleSelection(name, checkbox) {
     selectedNames.delete(name);
   }
   setHint(defaultHintText());
-  renderStatTiles(latestHistory, currentFailures);
-  renderCards(latestHistory, latestColumns, currentTop, currentFailures);
-  renderDetailSections(latestHistory);
+  renderStatTiles(latestHistory, currentStatus);
+  renderCards(latestHistory, currentColMeta, currentTop, currentStatus);
+  renderDetailSections(latestHistory, currentColMeta);
 }
 
-function buildSparkline(points, groupIntervalMinutes, isFailure) {
-  const color = isFailure ? 'var(--status-critical)' : 'var(--series-1)';
+function buildSparkline(points, groupIntervalMinutes, status) {
+  const color =
+    status === 'evacuation'
+      ? 'var(--status-critical)'
+      : status === 'alarm'
+        ? 'var(--status-warning)'
+        : status === 'failure'
+          ? 'var(--status-serious)'
+          : 'var(--series-1)';
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', 'sparkline');
   svg.setAttribute('viewBox', '0 0 240 56');
@@ -494,7 +539,7 @@ function buildSparkline(points, groupIntervalMinutes, isFailure) {
 
 // ---------- detail comparison charts ----------
 
-function renderDetailSections(hist) {
+function renderDetailSections(hist, colMetaMap) {
   detailSections.innerHTML = '';
   if (!hist) return;
 
@@ -517,6 +562,7 @@ function renderDetailSections(hist) {
   for (const [fam, groupNames] of groups) {
     const seriesList = groupNames.map((n) => ({
       name: n,
+      displayName: displayNameOf(colMetaMap.get(n), n),
       points: (hist.series[n] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }))
     }));
     detailSections.appendChild(buildDetailPanel(fam, seriesList, hist.groupIntervalMinutes));
@@ -688,7 +734,7 @@ function buildDetailPanel(family, seriesList, groupIntervalMinutes) {
       key.className = 'tooltip-key';
       key.style.background = seriesColor(series.name);
       const nameEl = document.createElement('span');
-      nameEl.textContent = series.name;
+      nameEl.textContent = series.displayName;
       const valueEl = document.createElement('span');
       valueEl.className = 'tooltip-value';
       const v = pointMaps[idx].get(nearestT);
@@ -724,7 +770,7 @@ function buildDetailPanel(family, seriesList, groupIntervalMinutes) {
     key.className = 'legend-key';
     key.style.background = seriesColor(series.name);
     const label = document.createElement('span');
-    label.textContent = series.name;
+    label.textContent = series.displayName;
     btn.appendChild(key);
     btn.appendChild(label);
     btn.addEventListener('click', () => {
@@ -767,7 +813,7 @@ function buildDetailTable(seriesList, masterTimestamps, pointMaps) {
   headRow.appendChild(thTime);
   for (const series of seriesList) {
     const th = document.createElement('th');
-    th.textContent = series.name;
+    th.textContent = series.displayName;
     headRow.appendChild(th);
   }
   thead.appendChild(headRow);
@@ -794,7 +840,7 @@ function buildDetailTable(seriesList, masterTimestamps, pointMaps) {
 
 searchInput.addEventListener('input', () => {
   searchTerm = searchInput.value;
-  if (latestHistory) renderCards(latestHistory, latestColumns, currentTop, currentFailures);
+  if (latestHistory) renderCards(latestHistory, currentColMeta, currentTop, currentStatus);
 });
 
 heroTile.addEventListener('click', () => {

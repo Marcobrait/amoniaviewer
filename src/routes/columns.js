@@ -1,6 +1,6 @@
 const express = require('express');
 const { getSensorColumns, getLatestRow } = require('../db/schema');
-const { loadSettings } = require('../config/settingsStore');
+const { loadSettings, displayNameFor, setpointsFor } = require('../config/settingsStore');
 const env = require('../config/env');
 
 const router = express.Router();
@@ -19,13 +19,17 @@ router.get('/', async (req, res) => {
     const columns = sensorColumns.map(({ name, qualityColumn }) => {
       const lastValue = latestRow ? latestRow[name] : null;
       const lastQuality = latestRow ? latestRow[qualityColumn] : null;
+      const setpoints = setpointsFor(settings, name);
       return {
         name,
         qualityColumn,
+        displayName: displayNameFor(settings, name),
         lastValue,
         lastQuality,
         reliable: lastQuality === reliableValue,
-        enabled: Boolean(settings.columns[name])
+        enabled: Boolean(settings.columns[name]),
+        alarmSetpoint: setpoints.alarm,
+        evacuationSetpoint: setpoints.evacuation
       };
     });
 

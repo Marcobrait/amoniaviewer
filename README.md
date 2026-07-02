@@ -45,8 +45,17 @@ Sistema voltado para manter em cache uma resposta http com resulados de uma cons
 - **Tela de configuracao** (`/`): lista todas as colunas encontradas com o ultimo valor lido,
   indicando se a leitura e confiavel (`*_Quality = RELIABLE_QUALITY_VALUE`), e permite marcar
   quais colunas devem ser expostas no endpoint de historico, alem dos intervalos de
-  agrupamento e atualizacao. O botao "Salvar configuracao" persiste tudo em
-  `config/settings.json` e reinicia o processo de coleta com os novos parametros.
+  agrupamento e atualizacao. O botao "Marcar confiaveis" marca de uma vez todos os sensores
+  cuja ultima leitura seja confiavel. Cada sensor tambem tem um campo de **nome de exibicao**
+  (opcional - se vazio, usa o nome original da coluna) e dois **setpoints**, `Alarme` e
+  `Evacuacao` (padrao 10 e 20), usados para classificar o estado do sensor. O botao
+  "Salvar configuracao" persiste tudo em `config/settings.json` e reinicia o processo de
+  coleta com os novos parametros.
+- **Estado do sensor**: a partir da ultima leitura de cada sensor habilitado, o dashboard e o
+  painel do Grafana calculam um dos quatro estados (mutuamente exclusivos): `falha` (leitura
+  negativa), `evacuacao` (acima do setpoint de evacuacao), `alarme` (acima do setpoint de
+  alarme) ou normal. Os totais de sensores em cada estado aparecem nos indicadores no topo de
+  ambas as telas.
 - **Coleta incremental**: ao salvar (ou ao iniciar o servidor), o sistema carrega o historico
   completo das ultimas `HISTORY_HOURS` horas para as colunas habilitadas, agrupando por
   `groupIntervalMinutes` e trazendo o valor MAXIMO de cada sensor dentro do intervalo,
@@ -76,7 +85,7 @@ Sistema voltado para manter em cache uma resposta http com resulados de uma cons
 
 | Metodo | Rota            | Descricao |
 |--------|-----------------|-----------|
-| GET    | `/api/columns`  | Lista colunas de sensor, ultimo valor/qualidade e estado habilitado |
+| GET    | `/api/columns`  | Lista colunas de sensor: ultimo valor/qualidade, estado habilitado, nome de exibicao e setpoints |
 | GET    | `/api/config`   | Configuracao atualmente salva |
 | POST   | `/api/config`   | Salva colunas habilitadas + intervalos e reinicia a coleta |
 | GET    | `/api/history`  | Historico agrupado (24h) das colunas habilitadas, servido do cache |

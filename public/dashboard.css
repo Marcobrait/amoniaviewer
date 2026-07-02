@@ -107,13 +107,30 @@ main.dashboard-main {
   margin: 0;
 }
 
-.stat-tile.is-alert {
-  background: rgba(208, 59, 59, 0.12);
-  border-color: var(--status-critical);
+.stat-tile.is-alert-warning {
+  background: rgba(250, 178, 25, 0.14);
+  border-color: var(--status-warning);
+}
+.stat-tile.is-alert-warning .stat-label,
+.stat-tile.is-alert-warning .stat-value {
+  color: var(--status-warning);
 }
 
-.stat-tile.is-alert .stat-label,
-.stat-tile.is-alert .stat-value {
+.stat-tile.is-alert-serious {
+  background: rgba(236, 131, 90, 0.14);
+  border-color: var(--status-serious);
+}
+.stat-tile.is-alert-serious .stat-label,
+.stat-tile.is-alert-serious .stat-value {
+  color: var(--status-serious);
+}
+
+.stat-tile.is-alert-critical {
+  background: rgba(208, 59, 59, 0.14);
+  border-color: var(--status-critical);
+}
+.stat-tile.is-alert-critical .stat-label,
+.stat-tile.is-alert-critical .stat-value {
   color: var(--status-critical);
 }
 
@@ -192,18 +209,29 @@ main.dashboard-main {
   border-color: var(--series-3);
 }
 
-.sensor-card.is-failure {
+/* Status do sensor (severidade crescente): alarme < falha < evacuacao.
+   Mutuamente exclusivos - so um se aplica por sensor por vez. */
+.sensor-card.status-alarm {
+  background: rgba(250, 178, 25, 0.14);
+  border-color: var(--status-warning);
+}
+.sensor-card.status-alarm:hover { border-color: var(--status-warning); }
+
+.sensor-card.status-failure {
+  background: rgba(236, 131, 90, 0.14);
+  border-color: var(--status-serious);
+}
+.sensor-card.status-failure:hover { border-color: var(--status-serious); }
+
+.sensor-card.status-evacuation {
   background: rgba(208, 59, 59, 0.16);
   border-color: var(--status-critical);
 }
+.sensor-card.status-evacuation:hover { border-color: var(--status-critical); }
 
-.sensor-card.is-failure:hover {
-  border-color: var(--status-critical);
-}
-
-.card-value.is-critical {
-  color: var(--status-critical);
-}
+.card-value.text-warning { color: var(--status-warning); }
+.card-value.text-serious { color: var(--status-serious); }
+.card-value.text-critical { color: var(--status-critical); }
 
 .sensor-card.is-flash {
   animation: card-flash 1000ms ease;

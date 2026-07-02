@@ -4,9 +4,14 @@ const env = require('./env');
 
 const SETTINGS_PATH = path.join(__dirname, '..', '..', 'config', 'settings.json');
 
+const DEFAULT_ALARM_SETPOINT = 10;
+const DEFAULT_EVACUATION_SETPOINT = 20;
+
 function defaultSettings() {
   return {
     columns: {},
+    displayNames: {},
+    setpoints: {},
     groupIntervalMinutes: env.defaults.groupIntervalMinutes,
     updateIntervalMinutes: env.defaults.updateIntervalMinutes
   };
@@ -46,6 +51,32 @@ function clampInt(value, min, max, fallback) {
   return Math.min(max, Math.max(min, n));
 }
 
+function toFiniteNumber(value, fallback) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Retorna o nome de exibicao de uma coluna, caindo para o nome original
+ * da coluna quando nao houver apelido configurado.
+ */
+function displayNameFor(settings, columnName) {
+  const custom = settings.displayNames && settings.displayNames[columnName];
+  return custom && custom.trim() ? custom.trim() : columnName;
+}
+
+/**
+ * Retorna os setpoints (alarme/evacuacao) de uma coluna, caindo para os
+ * valores padrao quando ainda nao configurados.
+ */
+function setpointsFor(settings, columnName) {
+  const custom = settings.setpoints && settings.setpoints[columnName];
+  return {
+    alarm: toFiniteNumber(custom && custom.alarm, DEFAULT_ALARM_SETPOINT),
+    evacuation: toFiniteNumber(custom && custom.evacuation, DEFAULT_EVACUATION_SETPOINT)
+  };
+}
+
 /**
  * Sanitiza a configuracao recebida via API, aceitando somente nomes de
  * coluna que realmente existem na tabela (evita entradas arbitrarias).
@@ -54,6 +85,8 @@ function sanitizeSettings(input, validColumnNames) {
   const current = loadSettings();
   const validSet = new Set(validColumnNames);
   const columns = {};
+  const displayNames = {};
+  const setpoints = {};
 
   if (input.columns && typeof input.columns === 'object') {
     for (const [name, enabled] of Object.entries(input.columns)) {
@@ -67,8 +100,29 @@ function sanitizeSettings(input, validColumnNames) {
     if (!(name in columns)) columns[name] = false;
   }
 
+  if (input.displayNames && typeof input.displayNames === 'object') {
+    for (const [name, label] of Object.entries(input.displayNames)) {
+      if (!validSet.has(name)) continue;
+      const trimmed = typeof label === 'string' ? label.trim() : '';
+      if (trimmed) displayNames[name] = trimmed;
+    }
+  }
+
+  if (input.setpoints && typeof input.setpoints === 'object') {
+    for (const [name, sp] of Object.entries(input.setpoints)) {
+      if (!validSet.has(name) || !sp || typeof sp !== 'object') continue;
+      const currentSp = setpointsFor(current, name);
+      setpoints[name] = {
+        alarm: toFiniteNumber(sp.alarm, currentSp.alarm),
+        evacuation: toFiniteNumber(sp.evacuation, currentSp.evacuation)
+      };
+    }
+  }
+
   return {
     columns,
+    displayNames,
+    setpoints,
     groupIntervalMinutes: clampInt(
       input.groupIntervalMinutes,
       1,
@@ -84,4 +138,13 @@ function sanitizeSettings(input, validColumnNames) {
   };
 }
 
-module.exports = { loadSettings, saveSettings, sanitizeSettings, SETTINGS_PATH };
+module.exports = {
+  loadSettings,
+  saveSettings,
+  sanitizeSettings,
+  displayNameFor,
+  setpointsFor,
+  DEFAULT_ALARM_SETPOINT,
+  DEFAULT_EVACUATION_SETPOINT,
+  SETTINGS_PATH
+};

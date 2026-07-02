@@ -35,6 +35,7 @@
         <h2>Sensores</h2>
         <div class="panel-actions">
           <button id="selectAllBtn" type="button" class="btn secondary">Marcar todos</button>
+          <button id="selectReliableBtn" type="button" class="btn secondary">Marcar confiaveis</button>
           <button id="clearAllBtn" type="button" class="btn secondary">Desmarcar todos</button>
           <button id="reloadBtn" type="button" class="btn secondary">Recarregar do banco</button>
         </div>
@@ -44,12 +45,15 @@
           <tr>
             <th>Exibir</th>
             <th>Coluna</th>
+            <th>Nome de exibicao</th>
             <th>Ultimo valor</th>
             <th>Qualidade</th>
+            <th>Alarme &gt;</th>
+            <th>Evacuacao &gt;</th>
           </tr>
         </thead>
         <tbody id="columnsBody">
-          <tr><td colspan="4">Carregando...</td></tr>
+          <tr><td colspan="7">Carregando...</td></tr>
         </tbody>
       </table>
     </section>

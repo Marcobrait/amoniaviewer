@@ -116,6 +116,19 @@ table {
   font-size: 14px;
 }
 
+.text-input,
+.number-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.text-input { width: 160px; }
+.number-input { width: 70px; }
+
 th, td {
   text-align: left;
   padding: 8px 10px;
@@ -136,6 +149,10 @@ tbody tr:hover { background: rgba(255,255,255,0.03); }
 
 .badge.ok { background: rgba(12, 163, 12, 0.15); color: var(--status-good); }
 .badge.bad { background: rgba(208, 59, 59, 0.18); color: var(--status-critical); }
+
+/* Hierarquia de severidade do sensor: alarme (amber) < falha (laranja) < evacuacao (vermelho, reservado) */
+.badge.warning { background: var(--status-warning); color: #1a1200; }
+.badge.serious { background: var(--status-serious); color: #1a0f00; }
 .badge.critical { background: var(--status-critical); color: #ffffff; }
 
 .btn {

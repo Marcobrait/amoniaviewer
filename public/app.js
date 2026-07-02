@@ -4,10 +4,12 @@ const updateIntervalInput = document.getElementById('updateInterval');
 const statusMsg = document.getElementById('statusMsg');
 const saveBtn = document.getElementById('saveBtn');
 const selectAllBtn = document.getElementById('selectAllBtn');
+const selectReliableBtn = document.getElementById('selectReliableBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const reloadBtn = document.getElementById('reloadBtn');
 
 let columnsData = [];
+let rowRefs = []; // { name, reliable, checkbox, displayNameInput, alarmInput, evacuationInput }
 
 function setStatus(text, kind) {
   statusMsg.textContent = text;
@@ -19,27 +21,87 @@ function formatValue(value) {
   return typeof value === 'number' ? value.toFixed(2) : String(value);
 }
 
+function buildRow(col) {
+  const tr = document.createElement('tr');
+
+  const enableTd = document.createElement('td');
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = Boolean(col.enabled);
+  enableTd.appendChild(checkbox);
+  tr.appendChild(enableTd);
+
+  const nameTd = document.createElement('td');
+  nameTd.textContent = col.name; // nome da coluna vem da API: textContent, nunca innerHTML
+  tr.appendChild(nameTd);
+
+  const displayNameTd = document.createElement('td');
+  const displayNameInput = document.createElement('input');
+  displayNameInput.type = 'text';
+  displayNameInput.className = 'text-input';
+  displayNameInput.placeholder = col.name;
+  displayNameInput.value = col.displayName && col.displayName !== col.name ? col.displayName : '';
+  displayNameTd.appendChild(displayNameInput);
+  tr.appendChild(displayNameTd);
+
+  const valueTd = document.createElement('td');
+  valueTd.textContent = formatValue(col.lastValue);
+  tr.appendChild(valueTd);
+
+  const qualityTd = document.createElement('td');
+  const badge = document.createElement('span');
+  badge.className = 'badge ' + (col.reliable ? 'ok' : 'bad');
+  badge.textContent = col.reliable ? 'Confiavel' : 'Nao confiavel';
+  const qualityValue = document.createElement('span');
+  qualityValue.style.color = 'var(--muted)';
+  qualityValue.textContent = ' (' + formatValue(col.lastQuality) + ')';
+  qualityTd.appendChild(badge);
+  qualityTd.appendChild(qualityValue);
+  tr.appendChild(qualityTd);
+
+  const alarmTd = document.createElement('td');
+  const alarmInput = document.createElement('input');
+  alarmInput.type = 'number';
+  alarmInput.className = 'number-input';
+  alarmInput.step = 'any';
+  alarmInput.value = col.alarmSetpoint;
+  alarmTd.appendChild(alarmInput);
+  tr.appendChild(alarmTd);
+
+  const evacuationTd = document.createElement('td');
+  const evacuationInput = document.createElement('input');
+  evacuationInput.type = 'number';
+  evacuationInput.className = 'number-input';
+  evacuationInput.step = 'any';
+  evacuationInput.value = col.evacuationSetpoint;
+  evacuationTd.appendChild(evacuationInput);
+  tr.appendChild(evacuationTd);
+
+  rowRefs.push({
+    name: col.name,
+    reliable: col.reliable,
+    checkbox,
+    displayNameInput,
+    alarmInput,
+    evacuationInput
+  });
+
+  return tr;
+}
+
 function renderColumns(columns) {
   columnsData = columns;
+  rowRefs = [];
+  columnsBody.innerHTML = '';
+
   if (columns.length === 0) {
-    columnsBody.innerHTML = '<tr><td colspan="4">Nenhuma coluna de sensor encontrada na tabela.</td></tr>';
+    columnsBody.innerHTML = '<tr><td colspan="7">Nenhuma coluna de sensor encontrada na tabela.</td></tr>';
     return;
   }
 
-  columnsBody.innerHTML = columns
-    .map((col, idx) => {
-      const badgeClass = col.reliable ? 'ok' : 'bad';
-      const badgeText = col.reliable ? 'Confiavel' : 'Nao confiavel';
-      return `
-        <tr>
-          <td><input type="checkbox" data-idx="${idx}" ${col.enabled ? 'checked' : ''} /></td>
-          <td>${col.name}</td>
-          <td>${formatValue(col.lastValue)}</td>
-          <td><span class="badge ${badgeClass}">${badgeText}</span> <span style="color:var(--muted)">(${formatValue(col.lastQuality)})</span></td>
-        </tr>
-      `;
-    })
-    .join('');
+  const fragment = document.createDocumentFragment();
+  columns.forEach((col) => fragment.appendChild(buildRow(col)));
+  columnsBody.appendChild(fragment);
 }
 
 async function loadAll() {
@@ -55,22 +117,35 @@ async function loadAll() {
   setStatus('');
 }
 
-function getCheckedState() {
-  const checkboxes = columnsBody.querySelectorAll('input[type="checkbox"]');
-  const result = {};
-  checkboxes.forEach((cb) => {
-    const idx = Number(cb.dataset.idx);
-    result[columnsData[idx].name] = cb.checked;
+function buildPayload() {
+  const columns = {};
+  const displayNames = {};
+  const setpoints = {};
+
+  rowRefs.forEach((row) => {
+    columns[row.name] = row.checkbox.checked;
+    displayNames[row.name] = row.displayNameInput.value;
+    setpoints[row.name] = {
+      alarm: Number(row.alarmInput.value),
+      evacuation: Number(row.evacuationInput.value)
+    };
   });
-  return result;
+
+  return { columns, displayNames, setpoints };
 }
 
 selectAllBtn.addEventListener('click', () => {
-  columnsBody.querySelectorAll('input[type="checkbox"]').forEach((cb) => (cb.checked = true));
+  rowRefs.forEach((row) => (row.checkbox.checked = true));
+});
+
+selectReliableBtn.addEventListener('click', () => {
+  rowRefs.forEach((row) => {
+    if (row.reliable) row.checkbox.checked = true;
+  });
 });
 
 clearAllBtn.addEventListener('click', () => {
-  columnsBody.querySelectorAll('input[type="checkbox"]').forEach((cb) => (cb.checked = false));
+  rowRefs.forEach((row) => (row.checkbox.checked = false));
 });
 
 reloadBtn.addEventListener('click', () => {
@@ -82,7 +157,7 @@ saveBtn.addEventListener('click', async () => {
   setStatus('Salvando...');
   try {
     const payload = {
-      columns: getCheckedState(),
+      ...buildPayload(),
       groupIntervalMinutes: Number(groupIntervalInput.value),
       updateIntervalMinutes: Number(updateIntervalInput.value)
     };
