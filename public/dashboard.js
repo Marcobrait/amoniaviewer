@@ -30,6 +30,7 @@ let selectedNames = new Set();
 let selectionInitialized = false;
 let searchTerm = '';
 let currentTop = null;
+let currentFailures = { count: 0, total: 0, names: new Set() };
 
 // ---------- formatting helpers ----------
 
@@ -83,6 +84,20 @@ function computeTopReading(hist) {
     }
   }
   return top;
+}
+
+// A sensor is considered in failure when its latest reading is negative
+// (out-of-range for these sensors, regardless of the *_Quality flag).
+function computeFailureSummary(hist) {
+  const names = new Set();
+  for (const name of hist.columns) {
+    const points = hist.series[name] || [];
+    const last = points.length ? points[points.length - 1] : null;
+    if (last && typeof last.value === 'number' && last.value < 0) {
+      names.add(name);
+    }
+  }
+  return { count: names.size, total: hist.columns.length, names };
 }
 
 function defaultHintText() {
@@ -204,9 +219,10 @@ function render() {
 
   currentTop = computeTopReading(hist);
   renderHero(currentTop);
+  currentFailures = computeFailureSummary(hist);
 
   if (hist.columns.length === 0) {
-    renderStatTiles(hist);
+    renderStatTiles(hist, currentFailures);
     cardSections.innerHTML = '';
     const p = document.createElement('p');
     p.className = 'empty-state';
@@ -231,9 +247,9 @@ function render() {
     }
   }
 
-  renderStatTiles(hist);
+  renderStatTiles(hist, currentFailures);
   setHint(defaultHintText());
-  renderCards(hist, cols, currentTop);
+  renderCards(hist, cols, currentTop, currentFailures);
   renderDetailSections(hist);
 }
 
@@ -253,9 +269,15 @@ function renderHero(top) {
   heroTime.textContent = `em ${formatDateTime(top.timestamp)}`;
 }
 
-function renderStatTiles(hist) {
+function renderStatTiles(hist, failures) {
+  const hasFailures = failures.count > 0;
   const tiles = [
     { label: 'Sensores habilitados', value: String(hist.columns.length) },
+    {
+      label: 'Sensores em falha',
+      value: `${failures.count}/${failures.total}`,
+      alert: hasFailures
+    },
     { label: 'Selecionados p/ comparar', value: `${selectedNames.size}/${MAX_SELECTION}` },
     { label: 'Intervalo de agrupamento', value: `${hist.groupIntervalMinutes} min` },
     { label: 'Intervalo de atualizacao', value: `${hist.updateIntervalMinutes} min` }
@@ -263,7 +285,7 @@ function renderStatTiles(hist) {
   statRow.innerHTML = '';
   for (const tile of tiles) {
     const div = document.createElement('div');
-    div.className = 'stat-tile';
+    div.className = 'stat-tile' + (tile.alert ? ' is-alert' : '');
     const label = document.createElement('p');
     label.className = 'stat-label';
     label.textContent = tile.label;
@@ -276,7 +298,7 @@ function renderStatTiles(hist) {
   }
 }
 
-function renderCards(hist, cols, topReading) {
+function renderCards(hist, cols, topReading, failures) {
   const colMetaMap = new Map((cols.columns || []).map((c) => [c.name, c]));
   const term = searchTerm.trim().toLowerCase();
   const names = hist.columns.filter((n) => n.toLowerCase().includes(term));
@@ -315,16 +337,21 @@ function renderCards(hist, cols, topReading) {
     for (const name of groupNames) {
       const points = (hist.series[name] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }));
       const isTop = Boolean(topReading && topReading.name === name);
-      grid.appendChild(buildCard(name, points, colMetaMap.get(name), hist.groupIntervalMinutes, isTop));
+      const isFailure = failures.names.has(name);
+      grid.appendChild(buildCard(name, points, colMetaMap.get(name), hist.groupIntervalMinutes, isTop, isFailure));
     }
     block.appendChild(grid);
     cardSections.appendChild(block);
   }
 }
 
-function buildCard(name, points, meta, groupIntervalMinutes, isTop) {
+function buildCard(name, points, meta, groupIntervalMinutes, isTop, isFailure) {
   const card = document.createElement('div');
-  card.className = 'sensor-card' + (selectedNames.has(name) ? ' is-selected' : '') + (isTop ? ' is-top' : '');
+  card.className =
+    'sensor-card' +
+    (selectedNames.has(name) ? ' is-selected' : '') +
+    (isTop ? ' is-top' : '') +
+    (isFailure ? ' is-failure' : '');
   card.dataset.sensor = name;
 
   const top = document.createElement('div');
@@ -338,6 +365,13 @@ function buildCard(name, points, meta, groupIntervalMinutes, isTop) {
 
   const badges = document.createElement('span');
   badges.className = 'card-badges';
+
+  if (isFailure) {
+    const failureBadge = document.createElement('span');
+    failureBadge.className = 'badge critical';
+    failureBadge.textContent = 'Em falha';
+    badges.appendChild(failureBadge);
+  }
 
   if (isTop) {
     const topBadge = document.createElement('span');
@@ -356,12 +390,12 @@ function buildCard(name, points, meta, groupIntervalMinutes, isTop) {
   card.appendChild(top);
 
   const valueEl = document.createElement('div');
-  valueEl.className = 'card-value';
+  valueEl.className = 'card-value' + (isFailure ? ' is-critical' : '');
   const last = points.length ? points[points.length - 1] : null;
   valueEl.textContent = last ? formatValue(last.v) : '—';
   card.appendChild(valueEl);
 
-  card.appendChild(buildSparkline(points, groupIntervalMinutes));
+  card.appendChild(buildSparkline(points, groupIntervalMinutes, isFailure));
 
   const label = document.createElement('label');
   label.className = 'card-select';
@@ -388,12 +422,13 @@ function toggleSelection(name, checkbox) {
     selectedNames.delete(name);
   }
   setHint(defaultHintText());
-  renderStatTiles(latestHistory);
-  renderCards(latestHistory, latestColumns, currentTop);
+  renderStatTiles(latestHistory, currentFailures);
+  renderCards(latestHistory, latestColumns, currentTop, currentFailures);
   renderDetailSections(latestHistory);
 }
 
-function buildSparkline(points, groupIntervalMinutes) {
+function buildSparkline(points, groupIntervalMinutes, isFailure) {
+  const color = isFailure ? 'var(--status-critical)' : 'var(--series-1)';
   const svg = document.createElementNS(SVG_NS, 'svg');
   svg.setAttribute('class', 'sparkline');
   svg.setAttribute('viewBox', '0 0 240 56');
@@ -431,7 +466,7 @@ function buildSparkline(points, groupIntervalMinutes) {
   for (const seg of buildSegmentsByGap(points, expectedGapMs)) {
     const area = document.createElementNS(SVG_NS, 'path');
     area.setAttribute('d', areaPathFromSegment(seg, xScale, yScale, baselineY));
-    area.setAttribute('fill', 'var(--series-1)');
+    area.setAttribute('fill', color);
     area.setAttribute('fill-opacity', '0.1');
     area.setAttribute('stroke', 'none');
     svg.appendChild(area);
@@ -439,7 +474,7 @@ function buildSparkline(points, groupIntervalMinutes) {
     const line = document.createElementNS(SVG_NS, 'path');
     line.setAttribute('d', pathFromSegment(seg, xScale, yScale));
     line.setAttribute('fill', 'none');
-    line.setAttribute('stroke', 'var(--series-1)');
+    line.setAttribute('stroke', color);
     line.setAttribute('stroke-width', '2');
     line.setAttribute('stroke-linecap', 'round');
     line.setAttribute('stroke-linejoin', 'round');
@@ -451,7 +486,7 @@ function buildSparkline(points, groupIntervalMinutes) {
   dot.setAttribute('cx', xScale(last.t).toFixed(2));
   dot.setAttribute('cy', yScale(last.v).toFixed(2));
   dot.setAttribute('r', 3);
-  dot.setAttribute('fill', 'var(--series-1)');
+  dot.setAttribute('fill', color);
   svg.appendChild(dot);
 
   return svg;
@@ -759,7 +794,7 @@ function buildDetailTable(seriesList, masterTimestamps, pointMaps) {
 
 searchInput.addEventListener('input', () => {
   searchTerm = searchInput.value;
-  if (latestHistory) renderCards(latestHistory, latestColumns, currentTop);
+  if (latestHistory) renderCards(latestHistory, latestColumns, currentTop, currentFailures);
 });
 
 heroTile.addEventListener('click', () => {

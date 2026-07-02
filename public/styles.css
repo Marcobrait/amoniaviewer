@@ -136,6 +136,7 @@ tbody tr:hover { background: rgba(255,255,255,0.03); }
 
 .badge.ok { background: rgba(12, 163, 12, 0.15); color: var(--status-good); }
 .badge.bad { background: rgba(208, 59, 59, 0.18); color: var(--status-critical); }
+.badge.critical { background: var(--status-critical); color: #ffffff; }
 
 .btn {
   border: none;

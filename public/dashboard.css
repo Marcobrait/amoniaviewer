@@ -107,6 +107,16 @@ main.dashboard-main {
   margin: 0;
 }
 
+.stat-tile.is-alert {
+  background: rgba(208, 59, 59, 0.12);
+  border-color: var(--status-critical);
+}
+
+.stat-tile.is-alert .stat-label,
+.stat-tile.is-alert .stat-value {
+  color: var(--status-critical);
+}
+
 /* panel header + toolbar */
 .panel-actions {
   display: flex;
@@ -180,6 +190,19 @@ main.dashboard-main {
 
 .sensor-card.is-top {
   border-color: var(--series-3);
+}
+
+.sensor-card.is-failure {
+  background: rgba(208, 59, 59, 0.16);
+  border-color: var(--status-critical);
+}
+
+.sensor-card.is-failure:hover {
+  border-color: var(--status-critical);
+}
+
+.card-value.is-critical {
+  color: var(--status-critical);
 }
 
 .sensor-card.is-flash {
