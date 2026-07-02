@@ -29,6 +29,16 @@ const env = {
   http: {
     port: int(process.env.HTTP_PORT, 3000)
   },
+  cors: {
+    // '*' libera qualquer origem (padrao). Para restringir, defina uma ou
+    // mais origens separadas por virgula, ex.: https://grafana.minhaempresa.com
+    origin: (function () {
+      var raw = (process.env.CORS_ORIGIN || '*').trim();
+      if (raw === '*' || raw === '') return '*';
+      var list = raw.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+      return list.length > 1 ? list : list[0];
+    })()
+  },
   defaults: {
     groupIntervalMinutes: int(process.env.DEFAULT_GROUP_INTERVAL_MINUTES, 10),
     updateIntervalMinutes: int(process.env.DEFAULT_UPDATE_INTERVAL_MINUTES, 10),

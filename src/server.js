@@ -15,7 +15,17 @@ async function main() {
   await getPool();
 
   const app = express();
-  app.use(cors());
+
+  // Chrome exige um cabeçalho extra (Private Network Access) quando uma
+  // pagina publica em HTTPS (ex.: o Grafana) chama uma API num IP privado
+  // como este. Sem isso, a preflight OPTIONS falha mesmo com CORS liberado.
+  app.use((req, res, next) => {
+    if (req.headers['access-control-request-private-network']) {
+      res.setHeader('Access-Control-Allow-Private-Network', 'true');
+    }
+    next();
+  });
+  app.use(cors({ origin: env.cors.origin }));
   app.use(express.json());
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
