@@ -394,6 +394,20 @@ button.kpi-tile:hover {
   cursor: crosshair;
 }
 
+.chart-svg--bars {
+  height: 170px;
+}
+
+.chart-svg .failure-bar {
+  fill: var(--status-serious);
+  transition: fill-opacity 100ms ease;
+}
+
+.chart-svg .failure-bar-hit {
+  fill: transparent;
+  cursor: pointer;
+}
+
 .chart-legend {
   display: flex;
   flex-wrap: wrap;

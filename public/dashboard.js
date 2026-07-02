@@ -17,6 +17,7 @@ const kpiRow = document.getElementById('kpiRow');
 const donutWrap = document.getElementById('donutWrap');
 const highlightWrap = document.getElementById('highlightWrap');
 const highlightTitle = document.getElementById('highlightTitle');
+const failureTimelineWrap = document.getElementById('failureTimelineWrap');
 const searchInput = document.getElementById('searchInput');
 const selectionHint = document.getElementById('selectionHint');
 const cardSections = document.getElementById('cardSections');
@@ -286,6 +287,7 @@ function render() {
   renderKpiRow(hist, currentColMeta, currentTop, currentStatus);
   renderDonut(currentStatus);
   renderTrendChart(hist, currentColMeta, currentMaxSensorValue);
+  renderFailureTimeline(hist, currentColMeta, currentMaxSensorValue);
 
   if (hist.columns.length === 0) {
     cardSections.innerHTML = '';
@@ -565,13 +567,13 @@ function renderTrendChart(hist, colMetaMap, maxSensorValue) {
 
   highlightTitle.textContent = `Concentracao — sensores ativos (${names.length})`;
 
-  // Pontos acima do limite maximo viram lacunas no grafico (nao sao plotados),
-  // igual as leituras marcadas como nao confiaveis pelo *_Quality.
+  // Pontos negativos ou acima do limite maximo viram lacunas no grafico
+  // (nao sao plotados), igual as leituras marcadas nao confiaveis pelo *_Quality.
   const seriesList = names.map((name) => ({
     name,
     displayName: displayNameOf(colMetaMap.get(name), name),
     points: (hist.series[name] || [])
-      .filter((pt) => typeof maxSensorValue !== 'number' || pt.value <= maxSensorValue)
+      .filter((pt) => isValidTrendPoint(pt.value, maxSensorValue))
       .map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }))
   }));
   const allPoints = seriesList.flatMap((s) => s.points);
@@ -748,6 +750,182 @@ function renderTrendChart(hist, colMetaMap, maxSensorValue) {
   hoverRect.addEventListener('pointerleave', hideTooltip);
 
   highlightWrap.appendChild(wrap);
+}
+
+// ---------- failure timeline (barras: sensores em falha por horario) ----------
+
+// Para cada balde de tempo (mesma janela de agrupamento do resto do sistema),
+// lista os sensores que estavam em falha (valor negativo ou acima do limite
+// maximo) NAQUELE momento - nao so na ultima leitura.
+function computeFailureTimeline(hist, maxSensorValue) {
+  const namesByBucket = new Map(); // t -> [nome, ...]
+  const allBuckets = new Set();
+  for (const name of hist.columns) {
+    for (const pt of hist.series[name] || []) {
+      const t = new Date(pt.timestamp).getTime();
+      allBuckets.add(t);
+      const v = pt.value;
+      const isFailure = typeof v === 'number' && (v < 0 || (typeof maxSensorValue === 'number' && v > maxSensorValue));
+      if (!isFailure) continue;
+      if (!namesByBucket.has(t)) namesByBucket.set(t, []);
+      namesByBucket.get(t).push(name);
+    }
+  }
+  const buckets = [...allBuckets].sort((a, b) => a - b);
+  return { buckets, namesByBucket };
+}
+
+function renderFailureTimeline(hist, colMetaMap, maxSensorValue) {
+  failureTimelineWrap.innerHTML = '';
+
+  const { buckets, namesByBucket } = computeFailureTimeline(hist, maxSensorValue);
+  if (buckets.length === 0) {
+    const p = document.createElement('p');
+    p.className = 'empty-state';
+    p.textContent = 'Sem dados nas ultimas 24h.';
+    failureTimelineWrap.appendChild(p);
+    return;
+  }
+
+  const counts = buckets.map((t) => (namesByBucket.get(t) || []).length);
+  const width = 1200;
+  const height = 170;
+  const margin = { top: 12, right: 16, bottom: 30, left: 34 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+
+  const minT = buckets[0];
+  const maxT = buckets[buckets.length - 1];
+  const yTicks = niceTicks(0, Math.max(1, ...counts), 4);
+  const yMax = yTicks[yTicks.length - 1] || 1;
+
+  const slotWidth = plotWidth / buckets.length;
+  const barWidth = Math.max(1, slotWidth * 0.7);
+  const xForIndex = (i) => margin.left + slotWidth * i;
+  const yScale = (v) => margin.top + plotHeight - (v / yMax) * plotHeight;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chart-wrap';
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', 'chart-svg chart-svg--bars');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  wrap.appendChild(svg);
+
+  for (const tick of yTicks) {
+    const y = yScale(tick);
+    const line = document.createElementNS(SVG_NS, 'line');
+    line.setAttribute('class', 'gridline');
+    line.setAttribute('x1', String(margin.left));
+    line.setAttribute('x2', String(width - margin.right));
+    line.setAttribute('y1', y.toFixed(2));
+    line.setAttribute('y2', y.toFixed(2));
+    svg.appendChild(line);
+
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'axis-label');
+    label.setAttribute('x', String(margin.left - 8));
+    label.setAttribute('y', (y + 3).toFixed(2));
+    label.setAttribute('text-anchor', 'end');
+    label.textContent = tick.toString();
+    svg.appendChild(label);
+  }
+
+  const baseline = document.createElementNS(SVG_NS, 'line');
+  baseline.setAttribute('class', 'baseline');
+  baseline.setAttribute('x1', String(margin.left));
+  baseline.setAttribute('x2', String(width - margin.right));
+  baseline.setAttribute('y1', String(margin.top + plotHeight));
+  baseline.setAttribute('y2', String(margin.top + plotHeight));
+  svg.appendChild(baseline);
+
+  const xTickCount = 6;
+  for (let i = 0; i <= xTickCount; i++) {
+    const t = minT + ((maxT - minT) * i) / xTickCount;
+    const x = margin.left + (plotWidth * i) / xTickCount;
+    const label = document.createElementNS(SVG_NS, 'text');
+    label.setAttribute('class', 'axis-label');
+    label.setAttribute('x', x.toFixed(2));
+    label.setAttribute('y', String(height - margin.bottom + 16));
+    label.setAttribute('text-anchor', i === 0 ? 'start' : i === xTickCount ? 'end' : 'middle');
+    label.textContent = formatTimeShort(t);
+    svg.appendChild(label);
+  }
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'chart-tooltip';
+  wrap.appendChild(tooltip);
+
+  buckets.forEach((t, i) => {
+    const count = counts[i];
+    const x = xForIndex(i);
+    const barHeight = (count / yMax) * plotHeight;
+    const barY = margin.top + plotHeight - barHeight;
+
+    if (count > 0) {
+      const bar = document.createElementNS(SVG_NS, 'rect');
+      bar.setAttribute('class', 'failure-bar');
+      bar.setAttribute('x', x.toFixed(2));
+      bar.setAttribute('y', barY.toFixed(2));
+      bar.setAttribute('width', barWidth.toFixed(2));
+      bar.setAttribute('height', Math.max(1, barHeight).toFixed(2));
+      bar.setAttribute('rx', '1');
+      svg.appendChild(bar);
+    }
+
+    // Alvo de hover maior que a barra visivel (facilita acertar com o mouse).
+    const hit = document.createElementNS(SVG_NS, 'rect');
+    hit.setAttribute('class', 'failure-bar-hit');
+    hit.setAttribute('x', x.toFixed(2));
+    hit.setAttribute('y', String(margin.top));
+    hit.setAttribute('width', Math.max(barWidth, slotWidth).toFixed(2));
+    hit.setAttribute('height', String(plotHeight));
+    svg.appendChild(hit);
+
+    hit.addEventListener('pointerenter', () => {
+      const names = namesByBucket.get(t) || [];
+
+      tooltip.innerHTML = '';
+      const timeEl = document.createElement('div');
+      timeEl.className = 'tooltip-time';
+      timeEl.textContent = formatDateTime(t);
+      tooltip.appendChild(timeEl);
+
+      if (names.length === 0) {
+        const row = document.createElement('div');
+        row.className = 'tooltip-row';
+        const span = document.createElement('span');
+        span.textContent = 'Nenhum sensor em falha';
+        row.appendChild(span);
+        tooltip.appendChild(row);
+      } else {
+        for (const name of names) {
+          const row = document.createElement('div');
+          row.className = 'tooltip-row';
+          const nameEl = document.createElement('span');
+          nameEl.textContent = displayNameOf(colMetaMap.get(name), name);
+          row.appendChild(nameEl);
+          tooltip.appendChild(row);
+        }
+      }
+
+      const svgRect = svg.getBoundingClientRect();
+      const wrapRect = wrap.getBoundingClientRect();
+      const scaleX = svgRect.width / width;
+      const scaleY = svgRect.height / height;
+      const originX = svgRect.left - wrapRect.left;
+      const originY = svgRect.top - wrapRect.top;
+      tooltip.style.left = `${originX + (x + barWidth / 2) * scaleX}px`;
+      tooltip.style.top = `${originY + barY * scaleY - 8}px`;
+      tooltip.style.opacity = '1';
+    });
+    hit.addEventListener('pointerleave', () => {
+      tooltip.style.opacity = '0';
+    });
+  });
+
+  failureTimelineWrap.appendChild(wrap);
 }
 
 function makeBadge(kind, text) {
