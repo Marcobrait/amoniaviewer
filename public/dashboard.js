@@ -280,7 +280,7 @@ function render() {
 
   renderKpiRow(hist, currentColMeta, currentTop, currentStatus);
   renderDonut(currentStatus);
-  renderHighlightChart(currentTop, hist, currentColMeta);
+  renderTrendChart(hist, currentColMeta);
 
   if (hist.columns.length === 0) {
     cardSections.innerHTML = '';
@@ -358,11 +358,14 @@ function buildKpiTile(opts) {
 function renderKpiRow(hist, colMetaMap, top, status) {
   kpiRow.innerHTML = '';
 
-  const reliableCount = hist.columns.filter((n) => {
+  // "Online" = sinal confiavel (*_Quality = 192) E sem falha (valor nao negativo).
+  const onlineCount = hist.columns.filter((n) => {
     const meta = colMetaMap.get(n);
-    return meta && meta.reliable;
+    const reliable = Boolean(meta && meta.reliable);
+    const isFailure = status.statusByName.get(n) === 'failure';
+    return reliable && !isFailure;
   }).length;
-  const reliablePct = hist.columns.length ? Math.round((reliableCount / hist.columns.length) * 100) : 0;
+  const onlinePct = hist.columns.length ? Math.round((onlineCount / hist.columns.length) * 100) : 0;
   const pct = (n) => (status.total ? Math.round((n / status.total) * 100) : 0);
 
   kpiRow.appendChild(
@@ -371,7 +374,7 @@ function renderKpiRow(hist, colMetaMap, top, status) {
       icon: 'signal',
       label: 'Total de sensores',
       value: String(hist.columns.length),
-      subPill: `${reliableCount} confiaveis (${reliablePct}%)`
+      subPill: `${onlineCount} online (${onlinePct}%)`
     })
   );
 
@@ -525,35 +528,46 @@ function renderDonut(status) {
   donutWrap.appendChild(buildDonutChart(status));
 }
 
-function renderHighlightChart(top, hist, colMetaMap) {
+// Sensores que tiveram pelo menos uma leitura acima de 0 nas ultimas 24h
+// (exclui sensores sem dados/nao confiaveis e sensores em falha permanente).
+function qualifyingTrendSensors(hist) {
+  return hist.columns.filter((name) => {
+    const points = hist.series[name] || [];
+    return points.some((p) => typeof p.value === 'number' && p.value > 0);
+  });
+}
+
+function renderTrendChart(hist, colMetaMap) {
   highlightWrap.innerHTML = '';
 
-  if (!top) {
+  const names = qualifyingTrendSensors(hist);
+  if (names.length === 0) {
     highlightTitle.textContent = 'Concentracao';
     const p = document.createElement('p');
     p.className = 'empty-state';
-    p.textContent = 'Sem leituras confiaveis nas ultimas 24h.';
+    p.textContent = 'Nenhum sensor com leitura acima de 0 nas ultimas 24h.';
     highlightWrap.appendChild(p);
     return;
   }
 
-  const meta = colMetaMap.get(top.name);
-  highlightTitle.textContent = `Concentracao — ${top.displayName}`;
+  highlightTitle.textContent = `Concentracao — sensores ativos (${names.length})`;
 
-  const points = (hist.series[top.name] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }));
-  const alarmSp = meta ? meta.alarmSetpoint : 10;
-  const evacSp = meta ? meta.evacuationSetpoint : 20;
+  const seriesList = names.map((name) => ({
+    name,
+    displayName: displayNameOf(colMetaMap.get(name), name),
+    points: (hist.series[name] || []).map((pt) => ({ t: new Date(pt.timestamp).getTime(), v: pt.value }))
+  }));
+  const allPoints = seriesList.flatMap((s) => s.points);
 
   const width = 760;
   const height = 260;
-  const margin = { top: 12, right: 60, bottom: 30, left: 50 };
+  const margin = { top: 12, right: 16, bottom: 30, left: 50 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
 
-  const minT = Math.min(...points.map((p) => p.t));
-  const maxT = Math.max(...points.map((p) => p.t));
-  const valuesForDomain = points.map((p) => p.v).concat([alarmSp, evacSp]);
-  const yTicks = niceTicks(Math.min(...valuesForDomain), Math.max(...valuesForDomain), 5);
+  const minT = Math.min(...allPoints.map((p) => p.t));
+  const maxT = Math.max(...allPoints.map((p) => p.t));
+  const yTicks = niceTicks(Math.min(...allPoints.map((p) => p.v)), Math.max(...allPoints.map((p) => p.v)), 5);
   const yMin = yTicks[0];
   const yMax = yTicks[yTicks.length - 1];
 
@@ -609,56 +623,30 @@ function renderHighlightChart(top, hist, colMetaMap) {
     svg.appendChild(label);
   }
 
-  function addThreshold(value, color, labelText) {
-    if (value < yMin || value > yMax) return;
-    const y = yScale(value);
-    const line = document.createElementNS(SVG_NS, 'line');
-    line.setAttribute('class', 'threshold-line');
-    line.setAttribute('x1', String(margin.left));
-    line.setAttribute('x2', String(width - margin.right));
-    line.setAttribute('y1', y.toFixed(2));
-    line.setAttribute('y2', y.toFixed(2));
-    line.setAttribute('stroke', color);
-    svg.appendChild(line);
-
-    const label = document.createElementNS(SVG_NS, 'text');
-    label.setAttribute('class', 'threshold-label');
-    label.setAttribute('x', String(width - margin.right + 6));
-    label.setAttribute('y', (y + 3).toFixed(2));
-    label.setAttribute('fill', color);
-    label.textContent = labelText;
-    svg.appendChild(label);
-  }
-  addThreshold(alarmSp, 'var(--status-warning)', 'Alarme');
-  addThreshold(evacSp, 'var(--status-critical)', 'Evacuacao');
-
-  const lineColor = 'var(--series-1)';
   const expectedGapMs = hist.groupIntervalMinutes * 60 * 1000;
-  const baselineY = margin.top + plotHeight;
-  for (const seg of buildSegmentsByGap(points, expectedGapMs)) {
-    const area = document.createElementNS(SVG_NS, 'path');
-    area.setAttribute('d', areaPathFromSegment(seg, xScale, yScale, baselineY));
-    area.setAttribute('fill', lineColor);
-    area.setAttribute('fill-opacity', '0.1');
-    area.setAttribute('stroke', 'none');
-    svg.appendChild(area);
-
-    const path = document.createElementNS(SVG_NS, 'path');
-    path.setAttribute('class', 'series-line');
-    path.setAttribute('d', pathFromSegment(seg, xScale, yScale));
-    path.setAttribute('stroke', lineColor);
-    svg.appendChild(path);
-  }
-
-  if (points.length > 0) {
-    const last = points[points.length - 1];
-    const dot = document.createElementNS(SVG_NS, 'circle');
-    dot.setAttribute('class', 'series-dot');
-    dot.setAttribute('cx', xScale(last.t).toFixed(2));
-    dot.setAttribute('cy', yScale(last.v).toFixed(2));
-    dot.setAttribute('r', '4');
-    dot.setAttribute('fill', lineColor);
-    svg.appendChild(dot);
+  const pointMaps = [];
+  for (const series of seriesList) {
+    const color = seriesColor(series.name);
+    for (const seg of buildSegmentsByGap(series.points, expectedGapMs)) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('class', 'series-line');
+      path.setAttribute('d', pathFromSegment(seg, xScale, yScale));
+      path.setAttribute('stroke', color);
+      path.style.strokeWidth = '1.3';
+      path.style.strokeOpacity = '0.85';
+      svg.appendChild(path);
+    }
+    if (series.points.length > 0) {
+      const last = series.points[series.points.length - 1];
+      const dot = document.createElementNS(SVG_NS, 'circle');
+      dot.setAttribute('class', 'series-dot');
+      dot.setAttribute('cx', xScale(last.t).toFixed(2));
+      dot.setAttribute('cy', yScale(last.v).toFixed(2));
+      dot.setAttribute('r', '2.5');
+      dot.setAttribute('fill', color);
+      svg.appendChild(dot);
+    }
+    pointMaps.push(new Map(series.points.map((p) => [p.t, p.v])));
   }
 
   const crosshair = document.createElementNS(SVG_NS, 'line');
@@ -679,19 +667,37 @@ function renderHighlightChart(top, hist, colMetaMap) {
   tooltip.className = 'chart-tooltip';
   wrap.appendChild(tooltip);
 
-  const timestamps = points.map((p) => p.t).sort((a, b) => a - b);
-  const pointMap = new Map(points.map((p) => [p.t, p.v]));
+  const masterTimestamps = [...new Set(allPoints.map((p) => p.t))].sort((a, b) => a - b);
+  let lastShownT = null;
 
   function showTooltip(evt) {
-    if (timestamps.length === 0) return;
+    if (masterTimestamps.length === 0) return;
     const rect = svg.getBoundingClientRect();
     const svgX = ((evt.clientX - rect.left) / rect.width) * width;
     const t = minT + ((svgX - margin.left) / plotWidth) * (maxT - minT);
-    const nearestT = nearestTimestamp(t, timestamps);
+    const nearestT = nearestTimestamp(t, masterTimestamps);
 
     crosshair.setAttribute('x1', xScale(nearestT).toFixed(2));
     crosshair.setAttribute('x2', xScale(nearestT).toFixed(2));
     crosshair.style.opacity = '1';
+
+    const wrapRect = wrap.getBoundingClientRect();
+    tooltip.style.left = `${evt.clientX - wrapRect.left}px`;
+    tooltip.style.top = `${evt.clientY - wrapRect.top - 12}px`;
+    tooltip.style.opacity = '1';
+
+    // Reconstruir as linhas do tooltip so quando o balde de tempo muda -
+    // evita recriar dezenas/centenas de nos de DOM a cada pixel do mouse.
+    if (nearestT === lastShownT) return;
+    lastShownT = nearestT;
+
+    const rows = [];
+    seriesList.forEach((series, idx) => {
+      const v = pointMaps[idx].get(nearestT);
+      if (v === undefined) return;
+      rows.push({ name: series.displayName, value: v, color: seriesColor(series.name) });
+    });
+    rows.sort((a, b) => b.value - a.value);
 
     tooltip.innerHTML = '';
     const timeEl = document.createElement('div');
@@ -699,29 +705,27 @@ function renderHighlightChart(top, hist, colMetaMap) {
     timeEl.textContent = formatDateTime(nearestT);
     tooltip.appendChild(timeEl);
 
-    const row = document.createElement('div');
-    row.className = 'tooltip-row';
-    const key = document.createElement('span');
-    key.className = 'tooltip-key';
-    key.style.background = lineColor;
-    const nameEl = document.createElement('span');
-    nameEl.textContent = top.displayName;
-    const valueEl = document.createElement('span');
-    valueEl.className = 'tooltip-value';
-    valueEl.textContent = formatValue(pointMap.get(nearestT));
-    row.appendChild(key);
-    row.appendChild(nameEl);
-    row.appendChild(valueEl);
-    tooltip.appendChild(row);
-
-    const wrapRect = wrap.getBoundingClientRect();
-    tooltip.style.left = `${evt.clientX - wrapRect.left}px`;
-    tooltip.style.top = `${evt.clientY - wrapRect.top - 12}px`;
-    tooltip.style.opacity = '1';
+    for (const row of rows) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'tooltip-row';
+      const key = document.createElement('span');
+      key.className = 'tooltip-key';
+      key.style.background = row.color;
+      const nameEl = document.createElement('span');
+      nameEl.textContent = row.name;
+      const valueEl = document.createElement('span');
+      valueEl.className = 'tooltip-value';
+      valueEl.textContent = formatValue(row.value);
+      rowEl.appendChild(key);
+      rowEl.appendChild(nameEl);
+      rowEl.appendChild(valueEl);
+      tooltip.appendChild(rowEl);
+    }
   }
   function hideTooltip() {
     crosshair.style.opacity = '0';
     tooltip.style.opacity = '0';
+    lastShownT = null;
   }
   hoverRect.addEventListener('pointermove', showTooltip);
   hoverRect.addEventListener('pointerleave', hideTooltip);

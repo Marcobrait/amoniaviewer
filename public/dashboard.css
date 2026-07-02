@@ -164,16 +164,6 @@ button.kpi-tile:hover {
   margin-left: 4px;
 }
 
-.chart-svg .threshold-line {
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
-  fill: none;
-}
-
-.chart-svg .threshold-label {
-  font-size: 10px;
-  font-weight: 600;
-}
 
 /* panel header + toolbar */
 .panel-actions {
@@ -443,6 +433,8 @@ button.kpi-tile:hover {
   padding: 8px 10px;
   font-size: 12px;
   min-width: 140px;
+  max-height: 240px;
+  overflow-y: auto;
   opacity: 0;
   transform: translate(-50%, -100%);
   z-index: 5;
