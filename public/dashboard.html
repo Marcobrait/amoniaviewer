@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Painel de Sensores - Monitor de Amonia</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1>Painel de Sensores</h1>
+        <p class="subtitle" id="headerSubtitle">Carregando...</p>
+      </div>
+      <a class="btn secondary" href="index.html">Configurar sensores</a>
+    </div>
+  </header>
+
+  <main class="dashboard-main">
+    <section class="panel overview-panel">
+      <button type="button" class="hero-tile" id="heroTile">
+        <p class="hero-label">Maior leitura nas ultimas 24h</p>
+        <div class="hero-value" id="heroValue">—</div>
+        <div class="hero-meta">
+          <span class="hero-key" id="heroKey"></span>
+          <span class="hero-sensor" id="heroSensor">Sem dados ainda</span>
+          <span class="hero-time" id="heroTime"></span>
+        </div>
+      </button>
+      <div class="stat-row" id="statRow"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Sensores habilitados</h2>
+        <div class="panel-actions">
+          <input type="search" id="searchInput" placeholder="Filtrar sensor pelo nome..." />
+        </div>
+      </div>
+      <p class="toolbar-hint" id="selectionHint"></p>
+      <div id="cardSections">
+        <p class="empty-state">Carregando sensores...</p>
+      </div>
+    </section>
+
+    <section id="detailSections"></section>
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

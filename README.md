@@ -1,7 +1,7 @@
 # Amonia Viewer
 
-Sistema Node.js para monitorar sensores de amonia armazenados em uma tabela SQL Server,
-com tela de configuracao de colunas e endpoint HTTP de historico agrupado das ultimas 24 horas.
+Sistema voltado para manter em cache uma resposta http com resulados de uma consulta em um banco SQL para evitar sobrecarga do banco e dados com multiplos usuarios realisando consutlas simultaneas.
+ 
 
 ## Configuracao
 
@@ -13,8 +13,8 @@ com tela de configuracao de colunas e endpoint HTTP de historico agrupado das ul
 
    Principais variaveis:
    - `DB_SERVER`, `DB_PORT`, `DB_DATABASE`, `DB_USER`, `DB_PASSWORD` - conexao SQL Server
-   - `DB_SCHEMA`, `DB_TABLE` - tabela consultada (padrao: `dbo.tab_monitor_sensores_amonia`)
-   - `DB_TIMESTAMP_COLUMN` - coluna de data/hora (padrao: `E3TimeStamp`)
+   - `DB_SCHEMA`, `DB_TABLE` - tabela consultada (padrao: `dbo.nome_tabela`)
+   - `DB_TIMESTAMP_COLUMN` - coluna de data/hora (padrao: `TIMESTAMP`)
    - `RELIABLE_QUALITY_VALUE` - valor da coluna `*_Quality` considerado confiavel (padrao: `192`)
    - `HTTP_PORT` - porta do servidor Node
    - `DEFAULT_GROUP_INTERVAL_MINUTES` - intervalo de agrupamento inicial (minutos)
@@ -64,10 +64,10 @@ com tela de configuracao de colunas e endpoint HTTP de historico agrupado das ul
     "historyHours": 24,
     "groupIntervalMinutes": 10,
     "updateIntervalMinutes": 10,
-    "columns": ["SensorAmonia001", "SensorAmonia002"],
+    "columns": ["NOMECOLUNA1", "NOMECOLUNA2"],
     "series": {
-      "SensorAmonia001": [{ "timestamp": "2026-07-01T12:00:00.000Z", "value": 12.3 }, ...],
-      "SensorAmonia002": [...]
+      "NOMECOLUNA1": [{ "timestamp": "2026-07-01T12:00:00.000Z", "value": 12.3 }, ...],
+      "NOMECOLUNA2": [...]
     }
   }
   ```
