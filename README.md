@@ -50,12 +50,12 @@ Sistema voltado para manter em cache uma resposta http com resulados de uma cons
   agrupamento e atualizacao. O botao "Marcar confiaveis" marca de uma vez todos os sensores
   cuja ultima leitura seja confiavel. Cada sensor tambem tem um campo de **nome de exibicao**
   (opcional - se vazio, usa o nome original da coluna) e dois **setpoints**, `Alarme` e
-  `Evacuacao` (padrao 10 e 20), usados para classificar o estado do sensor. O botao
-  "Salvar configuracao" persiste tudo em `config/settings.json` e reinicia o processo de
-  coleta com os novos parametros.
+  `Vazamento` (padrao 10 e 20 - internamente ainda chamado de `evacuation` no JSON salvo, por
+  compatibilidade), usados para classificar o estado do sensor. O botao "Salvar configuracao"
+  persiste tudo em `config/settings.json` e reinicia o processo de coleta com os novos parametros.
 - **Estado do sensor**: a partir da ultima leitura de cada sensor habilitado, o dashboard e o
   painel do Grafana calculam um dos quatro estados (mutuamente exclusivos): `falha` (leitura
-  negativa), `evacuacao` (acima do setpoint de evacuacao), `alarme` (acima do setpoint de
+  negativa), `vazamento` (acima do setpoint de vazamento), `alarme` (acima do setpoint de
   alarme) ou normal. Os totais de sensores em cada estado aparecem nos indicadores no topo de
   ambas as telas.
 - **Coleta incremental**: ao salvar (ou ao iniciar o servidor), o sistema carrega o historico

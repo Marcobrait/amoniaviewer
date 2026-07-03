@@ -409,7 +409,7 @@ function renderKpiRow(hist, colMetaMap, top, status) {
     buildKpiTile({
       kind: 'critical',
       icon: 'alert-octagon',
-      label: 'Em evacuacao',
+      label: 'Vazamento',
       value: String(status.counts.evacuation),
       sub: `${pct(status.counts.evacuation)}% do total`
     })
@@ -445,7 +445,7 @@ function buildDonutChart(status) {
   const segments = [
     { label: 'Normal', count: normal, color: 'var(--status-good)' },
     { label: 'Alarme', count: status.counts.alarm, color: 'var(--status-warning)' },
-    { label: 'Evacuacao', count: status.counts.evacuation, color: 'var(--status-critical)' },
+    { label: 'Vazamento', count: status.counts.evacuation, color: 'var(--status-critical)' },
     { label: 'Falha', count: status.counts.failure, color: 'var(--status-serious)' }
   ];
 
@@ -1008,7 +1008,7 @@ function buildCard(name, points, meta, groupIntervalMinutes, isTop, status) {
   badges.className = 'card-badges';
 
   if (status === 'evacuation') {
-    badges.appendChild(makeBadge('critical', 'Evacuacao'));
+    badges.appendChild(makeBadge('critical', 'Vazamento'));
   } else if (status === 'alarm') {
     badges.appendChild(makeBadge('warning', 'Alarme'));
   } else if (status === 'failure') {
