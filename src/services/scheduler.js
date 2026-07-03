@@ -1,6 +1,7 @@
 const env = require('../config/env');
 const { getSensorColumns } = require('../db/schema');
 const { queryGroupedHistory, queryMaxTimestamp } = require('../db/history');
+const dbWriter = require('./dbWriter');
 
 /**
  * Cache em memoria do historico agrupado. Mantido por bucket (inicio do
@@ -67,6 +68,19 @@ async function resolveEnabledColumns(settings) {
   return allColumns.filter((c) => settings.columns[c.name]);
 }
 
+// Sincroniza a tabela "_viewer" com o cache atual, se a funcionalidade
+// estiver habilitada. Erros aqui sao so logados - nunca devem derrubar o
+// polling principal, que precisa continuar servindo o cache normalmente.
+async function syncToDb() {
+  if (!env.dbWriter.enabled) return;
+  const columnNames = enabledColumnsCache.map((c) => c.name);
+  try {
+    await dbWriter.sync(columnNames, cache.buckets, env.dbWriter.historyMode);
+  } catch (err) {
+    console.error('[scheduler] erro ao sincronizar tabela _viewer:', err.message);
+  }
+}
+
 async function rebuildFull(settings) {
   currentSettings = settings;
   enabledColumnsCache = await resolveEnabledColumns(settings);
@@ -93,6 +107,8 @@ async function rebuildFull(settings) {
 
   cache.evictOlderThan(since);
   console.log(`[scheduler] historico inicial carregado: ${cache.buckets.size} baldes`);
+
+  await syncToDb();
 }
 
 async function pollIncremental() {
@@ -114,6 +130,8 @@ async function pollIncremental() {
 
     cache.evictOlderThan(historySinceDate());
     console.log(`[scheduler] atualizacao incremental: ${rows.length} baldes novos/atualizados`);
+
+    await syncToDb();
   } catch (err) {
     console.error('[scheduler] erro na atualizacao incremental:', err.message);
   }

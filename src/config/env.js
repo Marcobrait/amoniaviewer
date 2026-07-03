@@ -53,6 +53,17 @@ const env = {
     // de "falha" usado para valores negativos), tanto no dashboard quanto no
     // painel do Grafana.
     maxSensorValue: float(process.env.MAX_SENSOR_VALUE, 10000)
+  },
+  dbWriter: {
+    // Salva uma copia das leituras (colunas habilitadas, sem *_Quality) numa
+    // tabela "<DB_TABLE>_viewer", criada/atualizada automaticamente. A tabela
+    // original nunca e alterada.
+    enabled: bool(process.env.SAVE_TO_DB_ENABLED, false),
+    // true = a tabela _viewer so recebe INSERT/UPDATE, nunca apaga linhas
+    // antigas (vira um historico permanente que cresce sem limite).
+    // false = a tabela _viewer e podada a cada sincronizacao para conter
+    // exatamente a mesma janela de HISTORY_HOURS que esta no cache/JSON.
+    historyMode: bool(process.env.SAVE_TO_DB_HISTORY_MODE, false)
   }
 };
 

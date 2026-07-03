@@ -66,6 +66,19 @@ Sistema voltado para manter em cache uma resposta http com resulados de uma cons
   `WITH (NOLOCK)` e filtro por timestamp), atualiza os baldes correspondentes no cache em
   memoria e descarta os baldes que saíram da janela de 24 horas. Isso evita consultas pesadas
   repetidas no banco de producao.
+- **Salvar em tabela `_viewer`** (opcional, `SAVE_TO_DB_ENABLED=true`): a cada carga completa e a
+  cada atualizacao incremental, o sistema replica o mesmo cache exposto no `/api/history` numa
+  tabela `<DB_TABLE>_viewer` (ex.: `tab_monitor_sensores_amonia_BGE_viewer`), com a coluna de
+  timestamp e um par de colunas `[Sensor]` / `[Sensor]_Quality` para cada sensor habilitado (mesmo
+  padrao da tabela original). Como o cache so guarda o valor MAXIMO ja filtrado por leituras
+  confiaveis, a coluna `_Quality` da tabela `_viewer` e sintetica: fica `RELIABLE_QUALITY_VALUE`
+  quando ha valor no balde e `NULL` quando nao ha leitura confiavel naquele intervalo - ela nao
+  reproduz o codigo de qualidade bruto do CLP. Util para consultar o historico agrupado direto via
+  SQL, sem passar pela API. A tabela e criada automaticamente na primeira sincronizacao e ganha
+  colunas novas conforme mais sensores sao habilitados - a tabela original nunca e alterada.
+  `SAVE_TO_DB_HISTORY_MODE=false` (padrao) mantem a tabela `_viewer` espelhando exatamente a janela
+  de `HISTORY_HOURS`, podando registros antigos a cada sincronizacao;
+  `=true` faz a tabela so crescer, virando um historico permanente.
 - **Endpoint HTTP** (`GET /api/history`): retorna o JSON servido diretamente do cache em
   memoria (sem tocar no banco a cada requisicao), no formato:
 
@@ -99,7 +112,7 @@ Sistema voltado para manter em cache uma resposta http com resulados de uma cons
 src/
   config/     # env.js (leitura do .env) e settingsStore.js (config/settings.json)
   db/         # pool.js, schema.js (descoberta de colunas) e history.js (queries agrupadas)
-  services/   # scheduler.js (cache em memoria + polling incremental)
+  services/   # scheduler.js (cache em memoria + polling incremental) e dbWriter.js (tabela _viewer)
   routes/     # rotas Express
   server.js   # bootstrap
 public/       # tela de configuracao (HTML/CSS/JS puro)
