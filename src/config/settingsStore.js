@@ -2,10 +2,14 @@ const fs = require('fs');
 const path = require('path');
 const env = require('./env');
 
-const SETTINGS_PATH = path.join(__dirname, '..', '..', 'config', 'settings.json');
+const SETTINGS_DIR = path.join(__dirname, '..', '..', 'config', 'tables');
 
 const DEFAULT_ALARM_SETPOINT = 10;
 const DEFAULT_EVACUATION_SETPOINT = 20;
+
+function settingsPathFor(tableKey) {
+  return path.join(SETTINGS_DIR, `${tableKey}.settings.json`);
+}
 
 function defaultSettings() {
   return {
@@ -17,32 +21,32 @@ function defaultSettings() {
   };
 }
 
-function ensureConfigDir() {
-  const dir = path.dirname(SETTINGS_PATH);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+function ensureSettingsDir() {
+  if (!fs.existsSync(SETTINGS_DIR)) {
+    fs.mkdirSync(SETTINGS_DIR, { recursive: true });
   }
 }
 
-function loadSettings() {
-  if (!fs.existsSync(SETTINGS_PATH)) {
+function loadSettings(tableKey) {
+  const settingsPath = settingsPathFor(tableKey);
+  if (!fs.existsSync(settingsPath)) {
     const settings = defaultSettings();
-    saveSettings(settings);
+    saveSettings(tableKey, settings);
     return settings;
   }
   try {
-    const raw = fs.readFileSync(SETTINGS_PATH, 'utf-8');
+    const raw = fs.readFileSync(settingsPath, 'utf-8');
     const parsed = JSON.parse(raw);
     return { ...defaultSettings(), ...parsed };
   } catch (err) {
-    console.error('[config] falha ao ler settings.json, usando padrao:', err.message);
+    console.error(`[config] falha ao ler settings de '${tableKey}', usando padrao:`, err.message);
     return defaultSettings();
   }
 }
 
-function saveSettings(settings) {
-  ensureConfigDir();
-  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+function saveSettings(tableKey, settings) {
+  ensureSettingsDir();
+  fs.writeFileSync(settingsPathFor(tableKey), JSON.stringify(settings, null, 2), 'utf-8');
 }
 
 function clampInt(value, min, max, fallback) {
@@ -81,8 +85,8 @@ function setpointsFor(settings, columnName) {
  * Sanitiza a configuracao recebida via API, aceitando somente nomes de
  * coluna que realmente existem na tabela (evita entradas arbitrarias).
  */
-function sanitizeSettings(input, validColumnNames) {
-  const current = loadSettings();
+function sanitizeSettings(tableKey, input, validColumnNames) {
+  const current = loadSettings(tableKey);
   const validSet = new Set(validColumnNames);
   const columns = {};
   const displayNames = {};
@@ -144,7 +148,8 @@ module.exports = {
   sanitizeSettings,
   displayNameFor,
   setpointsFor,
+  settingsPathFor,
   DEFAULT_ALARM_SETPOINT,
   DEFAULT_EVACUATION_SETPOINT,
-  SETTINGS_PATH
+  SETTINGS_DIR
 };

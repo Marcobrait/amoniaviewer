@@ -1,24 +1,24 @@
 const express = require('express');
 const { getSensorColumns } = require('../db/schema');
 const { loadSettings, saveSettings, sanitizeSettings } = require('../config/settingsStore');
-const scheduler = require('../services/scheduler');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
-// GET /api/config - configuracao atualmente salva
+// GET /api/tables/:tableKey/config - configuracao atualmente salva
 router.get('/', (req, res) => {
-  res.json(loadSettings());
+  res.json(loadSettings(req.tableConfig.key));
 });
 
-// POST /api/config - salva colunas habilitadas + intervalos, e reinicia o scheduler
+// POST /api/tables/:tableKey/config - salva colunas habilitadas + intervalos, e reinicia o scheduler da tabela
 router.post('/', async (req, res) => {
+  const tableConfig = req.tableConfig;
   try {
-    const sensorColumns = await getSensorColumns();
+    const sensorColumns = await getSensorColumns(tableConfig);
     const validNames = sensorColumns.map((c) => c.name);
-    const settings = sanitizeSettings(req.body || {}, validNames);
+    const settings = sanitizeSettings(tableConfig.key, req.body || {}, validNames);
 
-    saveSettings(settings);
-    await scheduler.restart(settings);
+    saveSettings(tableConfig.key, settings);
+    await req.scheduler.restart(settings);
 
     res.json({ ok: true, settings });
   } catch (err) {

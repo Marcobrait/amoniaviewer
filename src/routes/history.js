@@ -1,11 +1,10 @@
 const express = require('express');
-const scheduler = require('../services/scheduler');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
-// GET /api/history - historico agrupado das colunas habilitadas (cache em memoria)
+// GET /api/tables/:tableKey/history - historico agrupado das colunas habilitadas (cache em memoria)
 router.get('/', (req, res) => {
-  res.json(scheduler.getHistoryJson());
+  res.json(req.scheduler.getHistoryJson());
 });
 
 module.exports = router;

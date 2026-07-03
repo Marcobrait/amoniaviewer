@@ -1,22 +1,23 @@
 const { getPool, sql } = require('./pool');
 const { quoteIdent } = require('./schema');
-const env = require('../config/env');
 
 /**
  * Consulta o historico agrupado em baldes de N minutos, trazendo o valor
  * MAXIMO de cada sensor selecionado, considerando apenas leituras cuja
  * coluna de qualidade seja igual ao valor confiavel configurado.
  *
+ * @param {{schema: string, table: string, timestampColumn: string}} tableConfig
  * @param {Array<{name: string, qualityColumn: string}>} columns
  * @param {number} groupIntervalMinutes
  * @param {Date} since - busca somente registros com timestamp >= since
+ * @param {number} reliableQualityValue
  */
-async function queryGroupedHistory(columns, groupIntervalMinutes, since) {
+async function queryGroupedHistory(tableConfig, columns, groupIntervalMinutes, since, reliableQualityValue) {
   if (columns.length === 0) return [];
 
   const pool = await getPool();
-  const tsCol = quoteIdent(env.db.timestampColumn);
-  const tableRef = `${quoteIdent(env.db.schema)}.${quoteIdent(env.db.table)}`;
+  const tsCol = quoteIdent(tableConfig.timestampColumn);
+  const tableRef = `${quoteIdent(tableConfig.schema)}.${quoteIdent(tableConfig.table)}`;
 
   const bucketExpr = `DATEADD(MINUTE, (DATEDIFF(MINUTE, 0, ${tsCol}) / @groupMinutes) * @groupMinutes, 0)`;
 
@@ -41,7 +42,7 @@ async function queryGroupedHistory(columns, groupIntervalMinutes, since) {
   const request = pool
     .request()
     .input('groupMinutes', sql.Int, groupIntervalMinutes)
-    .input('reliable', sql.Int, env.defaults.reliableQualityValue)
+    .input('reliable', sql.Int, reliableQualityValue)
     .input('since', sql.DateTime, since);
 
   const result = await request.query(query);
@@ -51,11 +52,14 @@ async function queryGroupedHistory(columns, groupIntervalMinutes, since) {
 /**
  * Retorna o maior timestamp existente na tabela a partir de `since`
  * (usado para saber ate onde o cache incremental ja avancou).
+ *
+ * @param {{schema: string, table: string, timestampColumn: string}} tableConfig
+ * @param {Date} since
  */
-async function queryMaxTimestamp(since) {
+async function queryMaxTimestamp(tableConfig, since) {
   const pool = await getPool();
-  const tsCol = quoteIdent(env.db.timestampColumn);
-  const tableRef = `${quoteIdent(env.db.schema)}.${quoteIdent(env.db.table)}`;
+  const tsCol = quoteIdent(tableConfig.timestampColumn);
+  const tableRef = `${quoteIdent(tableConfig.schema)}.${quoteIdent(tableConfig.table)}`;
 
   const result = await pool
     .request()

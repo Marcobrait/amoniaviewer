@@ -3,15 +3,16 @@ const { getSensorColumns, getLatestRow } = require('../db/schema');
 const { loadSettings, displayNameFor, setpointsFor } = require('../config/settingsStore');
 const env = require('../config/env');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
-// GET /api/columns - lista colunas disponiveis com ultimo valor/qualidade e estado (habilitada ou nao)
+// GET /api/tables/:tableKey/columns - lista colunas disponiveis com ultimo valor/qualidade e estado (habilitada ou nao)
 router.get('/', async (req, res) => {
+  const tableConfig = req.tableConfig;
   try {
     const [sensorColumns, latestRow, settings] = await Promise.all([
-      getSensorColumns(),
-      getLatestRow(),
-      Promise.resolve(loadSettings())
+      getSensorColumns(tableConfig),
+      getLatestRow(tableConfig),
+      Promise.resolve(loadSettings(tableConfig.key))
     ]);
 
     const reliableValue = env.defaults.reliableQualityValue;
@@ -34,8 +35,9 @@ router.get('/', async (req, res) => {
     });
 
     res.json({
-      timestampColumn: env.db.timestampColumn,
-      lastTimestamp: latestRow ? latestRow[env.db.timestampColumn] : null,
+      table: { key: tableConfig.key, displayName: tableConfig.displayName },
+      timestampColumn: tableConfig.timestampColumn,
+      lastTimestamp: latestRow ? latestRow[tableConfig.timestampColumn] : null,
       reliableQualityValue: reliableValue,
       maxSensorValue: env.defaults.maxSensorValue,
       columns

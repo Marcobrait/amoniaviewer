@@ -3,67 +3,55 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Configuracao - Monitor de Amonia</title>
+  <title>Tabelas monitoradas - Monitor de Amonia</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header>
     <div class="header-row">
       <div>
-        <h1>Configuracao do Monitor de Amonia</h1>
-        <p class="subtitle">Selecione os sensores que devem ser disponibilizados no endpoint de historico.</p>
+        <h1>Tabelas monitoradas</h1>
+        <p class="subtitle">Cadastre e acesse cada tabela SQL Server monitorada pelo sistema.</p>
       </div>
-      <a class="btn secondary" href="dashboard.html">Ver painel de sensores</a>
     </div>
   </header>
 
   <main>
     <section class="panel">
-      <h2>Parametros de coleta</h2>
-      <div class="form-row">
-        <label for="groupInterval">Agrupar a cada (minutos)</label>
-        <input type="number" id="groupInterval" min="1" max="1440" />
-      </div>
-      <div class="form-row">
-        <label for="updateInterval">Atualizar banco a cada (minutos)</label>
-        <input type="number" id="updateInterval" min="1" max="1440" />
-      </div>
+      <h2>Adicionar tabela</h2>
+      <form id="addTableForm">
+        <div class="form-row">
+          <label for="newSchema">Schema</label>
+          <input type="text" id="newSchema" class="text-input" placeholder="dbo" />
+        </div>
+        <div class="form-row">
+          <label for="newTable">Nome da tabela</label>
+          <input type="text" id="newTable" class="text-input" placeholder="tab_monitor_sensores_amonia_XYZ" required />
+        </div>
+        <div class="form-row">
+          <label for="newTimestampColumn">Coluna de timestamp</label>
+          <input type="text" id="newTimestampColumn" class="text-input" placeholder="E3TimeStamp" />
+        </div>
+        <div class="form-row">
+          <label for="newDisplayName">Nome de exibicao (opcional)</label>
+          <input type="text" id="newDisplayName" class="text-input" placeholder="Deixe em branco para usar o nome da tabela" />
+        </div>
+        <div class="form-row">
+          <span></span>
+          <button type="submit" class="btn primary" id="addTableBtn">Adicionar tabela</button>
+        </div>
+      </form>
+      <p id="addTableStatus"></p>
     </section>
 
     <section class="panel">
-      <div class="panel-header">
-        <h2>Sensores</h2>
-        <div class="panel-actions">
-          <button id="selectAllBtn" type="button" class="btn secondary">Marcar todos</button>
-          <button id="selectReliableBtn" type="button" class="btn secondary">Marcar confiaveis</button>
-          <button id="clearAllBtn" type="button" class="btn secondary">Desmarcar todos</button>
-          <button id="reloadBtn" type="button" class="btn secondary">Recarregar do banco</button>
-        </div>
+      <h2>Tabelas cadastradas</h2>
+      <div id="tableList">
+        <p class="empty-state">Carregando...</p>
       </div>
-      <table id="columnsTable">
-        <thead>
-          <tr>
-            <th>Exibir</th>
-            <th>Coluna</th>
-            <th>Nome de exibicao</th>
-            <th>Ultimo valor</th>
-            <th>Qualidade</th>
-            <th>Alarme &gt;</th>
-            <th>Vazamento &gt;</th>
-          </tr>
-        </thead>
-        <tbody id="columnsBody">
-          <tr><td colspan="7">Carregando...</td></tr>
-        </tbody>
-      </table>
     </section>
-
-    <div class="save-bar">
-      <span id="statusMsg"></span>
-      <button id="saveBtn" type="button" class="btn primary">Salvar configuracao</button>
-    </div>
   </main>
 
-  <script src="app.js"></script>
+  <script src="landing.js"></script>
 </body>
 </html>

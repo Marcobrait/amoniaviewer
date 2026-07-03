@@ -62,6 +62,12 @@ header {
   flex-wrap: wrap;
 }
 
+.header-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 h1 { margin: 0 0 4px; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .subtitle { color: var(--muted); margin: 0; font-size: 13px; }
 
@@ -186,3 +192,34 @@ tbody tr:hover { background: rgba(255,255,255,0.03); }
 #statusMsg { color: var(--muted); font-size: 13px; }
 #statusMsg.success { color: var(--ok); }
 #statusMsg.error { color: var(--bad); }
+
+#addTableStatus { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+#addTableStatus.success { color: var(--ok); }
+#addTableStatus.error { color: var(--bad); }
+
+.empty-state { color: var(--muted); font-size: 14px; padding: 12px 0; }
+
+.table-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.table-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.table-card-header { margin-bottom: 12px; }
+
+.table-card-title { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+
+.table-card-subtitle { margin: 0; font-size: 12px; color: var(--muted); }
+
+.table-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

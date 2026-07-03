@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Configuracao da tabela - Monitor de Amonia</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div class="header-row">
+      <div>
+        <h1 id="pageTitle">Configuracao da tabela</h1>
+        <p class="subtitle">Selecione os sensores que devem ser disponibilizados no endpoint de historico.</p>
+      </div>
+      <div class="header-actions">
+        <a class="btn secondary" href="index.html">Todas as tabelas</a>
+        <a class="btn secondary" id="dashboardLink" href="dashboard.html">Ver painel de sensores</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Parametros de coleta</h2>
+      <div class="form-row">
+        <label for="groupInterval">Agrupar a cada (minutos)</label>
+        <input type="number" id="groupInterval" min="1" max="1440" />
+      </div>
+      <div class="form-row">
+        <label for="updateInterval">Atualizar banco a cada (minutos)</label>
+        <input type="number" id="updateInterval" min="1" max="1440" />
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <h2>Sensores</h2>
+        <div class="panel-actions">
+          <button id="selectAllBtn" type="button" class="btn secondary">Marcar todos</button>
+          <button id="selectReliableBtn" type="button" class="btn secondary">Marcar confiaveis</button>
+          <button id="clearAllBtn" type="button" class="btn secondary">Desmarcar todos</button>
+          <button id="reloadBtn" type="button" class="btn secondary">Recarregar do banco</button>
+        </div>
+      </div>
+      <table id="columnsTable">
+        <thead>
+          <tr>
+            <th>Exibir</th>
+            <th>Coluna</th>
+            <th>Nome de exibicao</th>
+            <th>Ultimo valor</th>
+            <th>Qualidade</th>
+            <th>Alarme &gt;</th>
+            <th>Vazamento &gt;</th>
+          </tr>
+        </thead>
+        <tbody id="columnsBody">
+          <tr><td colspan="7">Carregando...</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <div class="save-bar">
+      <span id="statusMsg"></span>
+      <button id="saveBtn" type="button" class="btn primary">Salvar configuracao</button>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

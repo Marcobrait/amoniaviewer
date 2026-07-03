@@ -7,6 +7,10 @@ const selectAllBtn = document.getElementById('selectAllBtn');
 const selectReliableBtn = document.getElementById('selectReliableBtn');
 const clearAllBtn = document.getElementById('clearAllBtn');
 const reloadBtn = document.getElementById('reloadBtn');
+const pageTitle = document.getElementById('pageTitle');
+const dashboardLink = document.getElementById('dashboardLink');
+
+const tableKey = new URLSearchParams(location.search).get('table');
 
 let columnsData = [];
 let rowRefs = []; // { name, reliable, checkbox, displayNameInput, alarmInput, evacuationInput }
@@ -14,6 +18,18 @@ let rowRefs = []; // { name, reliable, checkbox, displayNameInput, alarmInput, e
 function setStatus(text, kind) {
   statusMsg.textContent = text;
   statusMsg.className = kind || '';
+}
+
+if (!tableKey) {
+  setStatus('Nenhuma tabela selecionada. Volte para a lista de tabelas.', 'error');
+  columnsBody.innerHTML = '<tr><td colspan="7">Selecione uma tabela na tela inicial.</td></tr>';
+  saveBtn.disabled = true;
+  selectAllBtn.disabled = true;
+  selectReliableBtn.disabled = true;
+  clearAllBtn.disabled = true;
+  reloadBtn.disabled = true;
+} else {
+  dashboardLink.href = `dashboard.html?table=${encodeURIComponent(tableKey)}`;
 }
 
 function formatValue(value) {
@@ -107,9 +123,14 @@ function renderColumns(columns) {
 async function loadAll() {
   setStatus('Carregando...');
   const [columnsRes, configRes] = await Promise.all([
-    fetch('/api/columns').then((r) => r.json()),
-    fetch('/api/config').then((r) => r.json())
+    fetch(`/api/tables/${encodeURIComponent(tableKey)}/columns`).then((r) => r.json()),
+    fetch(`/api/tables/${encodeURIComponent(tableKey)}/config`).then((r) => r.json())
   ]);
+
+  if (columnsRes.table) {
+    pageTitle.textContent = `Configuracao - ${columnsRes.table.displayName}`;
+    document.title = `Configuracao - ${columnsRes.table.displayName}`;
+  }
 
   renderColumns(columnsRes.columns || []);
   groupIntervalInput.value = configRes.groupIntervalMinutes;
@@ -161,7 +182,7 @@ saveBtn.addEventListener('click', async () => {
       groupIntervalMinutes: Number(groupIntervalInput.value),
       updateIntervalMinutes: Number(updateIntervalInput.value)
     };
-    const res = await fetch('/api/config', {
+    const res = await fetch(`/api/tables/${encodeURIComponent(tableKey)}/config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
@@ -175,4 +196,6 @@ saveBtn.addEventListener('click', async () => {
   }
 });
 
-loadAll().catch((err) => setStatus('Erro ao carregar: ' + err.message, 'error'));
+if (tableKey) {
+  loadAll().catch((err) => setStatus('Erro ao carregar: ' + err.message, 'error'));
+}

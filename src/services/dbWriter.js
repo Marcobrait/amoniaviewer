@@ -2,19 +2,19 @@ const { getPool, sql } = require('../db/pool');
 const { quoteIdent } = require('../db/schema');
 const env = require('../config/env');
 
-function viewerTableName() {
-  return `${env.db.table}_viewer`;
+function viewerTableName(tableConfig) {
+  return `${tableConfig.table}_viewer`;
 }
 
-function tableRef() {
-  return `${quoteIdent(env.db.schema)}.${quoteIdent(viewerTableName())}`;
+function tableRef(tableConfig) {
+  return `${quoteIdent(tableConfig.schema)}.${quoteIdent(viewerTableName(tableConfig))}`;
 }
 
-async function tableExists(pool) {
+async function tableExists(pool, tableConfig) {
   const result = await pool
     .request()
-    .input('schema', sql.NVarChar, env.db.schema)
-    .input('table', sql.NVarChar, viewerTableName())
+    .input('schema', sql.NVarChar, tableConfig.schema)
+    .input('table', sql.NVarChar, viewerTableName(tableConfig))
     .query(`
       SELECT COUNT(*) AS cnt
       FROM INFORMATION_SCHEMA.TABLES
@@ -23,11 +23,11 @@ async function tableExists(pool) {
   return result.recordset[0].cnt > 0;
 }
 
-async function getExistingColumns(pool) {
+async function getExistingColumns(pool, tableConfig) {
   const result = await pool
     .request()
-    .input('schema', sql.NVarChar, env.db.schema)
-    .input('table', sql.NVarChar, viewerTableName())
+    .input('schema', sql.NVarChar, tableConfig.schema)
+    .input('table', sql.NVarChar, viewerTableName(tableConfig))
     .query(`
       SELECT COLUMN_NAME
       FROM INFORMATION_SCHEMA.COLUMNS
@@ -48,18 +48,20 @@ function buildColumnDefs(columnNames) {
 }
 
 /**
- * Garante que a tabela "<DB_TABLE>_viewer" existe e tem as colunas de valor
+ * Garante que a tabela "<table>_viewer" existe e tem as colunas de valor
  * e qualidade (`_Quality`) de cada sensor habilitado. Nunca remove colunas
  * nem mexe na tabela original - so cria a tabela na primeira vez e adiciona
  * colunas novas conforme mais sensores sao habilitados.
+ *
+ * @param {{schema: string, table: string, timestampColumn: string}} tableConfig
  */
-async function ensureTable(columnNames) {
+async function ensureTable(tableConfig, columnNames) {
   const pool = await getPool();
-  const tsCol = quoteIdent(env.db.timestampColumn);
-  const ref = tableRef();
+  const tsCol = quoteIdent(tableConfig.timestampColumn);
+  const ref = tableRef(tableConfig);
   const colDefs = buildColumnDefs(columnNames);
 
-  const exists = await tableExists(pool);
+  const exists = await tableExists(pool, tableConfig);
   if (!exists) {
     const colsDef = colDefs.map((c) => `${quoteIdent(c.name)} ${c.type} NULL`).join(',\n        ');
     await pool.request().query(`
@@ -68,16 +70,16 @@ async function ensureTable(columnNames) {
         ${colsDef}
       )
     `);
-    console.log(`[dbWriter] tabela ${viewerTableName()} criada com ${columnNames.length} sensor(es) (valor + qualidade)`);
+    console.log(`[dbWriter] tabela ${viewerTableName(tableConfig)} criada com ${columnNames.length} sensor(es) (valor + qualidade)`);
     return;
   }
 
-  const existingCols = await getExistingColumns(pool);
+  const existingCols = await getExistingColumns(pool, tableConfig);
   const missing = colDefs.filter((c) => !existingCols.has(c.name));
   if (missing.length > 0) {
     const addClauses = missing.map((c) => `${quoteIdent(c.name)} ${c.type} NULL`).join(', ');
     await pool.request().query(`ALTER TABLE ${ref} ADD ${addClauses}`);
-    console.log(`[dbWriter] coluna(s) adicionada(s) em ${viewerTableName()}: ${missing.map((c) => c.name).join(', ')}`);
+    console.log(`[dbWriter] coluna(s) adicionada(s) em ${viewerTableName(tableConfig)}: ${missing.map((c) => c.name).join(', ')}`);
   }
 }
 
@@ -92,20 +94,21 @@ async function ensureTable(columnNames) {
  * antigo que `minTs`, mantendo a tabela identica a janela atual do cache/JSON.
  * Se verdadeiro, registros antigos nunca sao apagados (historico permanente).
  *
+ * @param {{schema: string, table: string, timestampColumn: string}} tableConfig
  * @param {string[]} columnNames - colunas de sensor habilitadas
  * @param {Map<string, Record<string, number>>} buckets - bucketIso -> {coluna: valor}
  * @param {boolean} historyMode
  */
-async function sync(columnNames, buckets, historyMode) {
+async function sync(tableConfig, columnNames, buckets, historyMode) {
   if (!env.dbWriter.enabled) return;
   if (columnNames.length === 0 || buckets.size === 0) return;
 
-  await ensureTable(columnNames);
+  await ensureTable(tableConfig, columnNames);
 
   const pool = await getPool();
-  const tsCol = env.db.timestampColumn;
+  const tsCol = tableConfig.timestampColumn;
   const tsColQuoted = quoteIdent(tsCol);
-  const ref = tableRef();
+  const ref = tableRef(tableConfig);
 
   const entries = [...buckets.entries()];
   const timestamps = entries.map(([iso]) => new Date(iso));
@@ -126,8 +129,8 @@ async function sync(columnNames, buckets, historyMode) {
   // quando ha valor no balde, e NULL quando nao ha (sem leitura confiavel).
   const reliableValue = env.defaults.reliableQualityValue;
 
-  const bulkTable = new sql.Table(viewerTableName());
-  bulkTable.schema = env.db.schema;
+  const bulkTable = new sql.Table(viewerTableName(tableConfig));
+  bulkTable.schema = tableConfig.schema;
   bulkTable.create = false;
   bulkTable.columns.add(tsCol, sql.DateTime, { nullable: false });
   for (const col of columnNames) {
@@ -156,7 +159,7 @@ async function sync(columnNames, buckets, historyMode) {
   }
 
   console.log(
-    `[dbWriter] sincronizado: ${entries.length} balde(s) em ${viewerTableName()}` +
+    `[dbWriter] sincronizado: ${entries.length} balde(s) em ${viewerTableName(tableConfig)}` +
       (historyMode ? ' (modo historico)' : ' (espelhando janela atual)')
   );
 }

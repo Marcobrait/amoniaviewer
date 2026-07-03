@@ -12,6 +12,10 @@ const SERIES_COLORS = [
 const MAX_SELECTION = 8;
 const REFRESH_MS = 60000;
 
+const tableKey = new URLSearchParams(location.search).get('table');
+
+const pageTitle = document.getElementById('pageTitle');
+const configLink = document.getElementById('configLink');
 const headerSubtitle = document.getElementById('headerSubtitle');
 const kpiRow = document.getElementById('kpiRow');
 const donutWrap = document.getElementById('donutWrap');
@@ -260,9 +264,16 @@ async function fetchJson(url) {
 
 async function loadData() {
   try {
-    const [hist, cols] = await Promise.all([fetchJson('/api/history'), fetchJson('/api/columns')]);
+    const [hist, cols] = await Promise.all([
+      fetchJson(`/api/tables/${encodeURIComponent(tableKey)}/history`),
+      fetchJson(`/api/tables/${encodeURIComponent(tableKey)}/columns`)
+    ]);
     latestHistory = hist;
     latestColumns = cols;
+    if (cols.table) {
+      pageTitle.textContent = `Painel de Sensores - ${cols.table.displayName}`;
+      document.title = `Painel de Sensores - ${cols.table.displayName}`;
+    }
     render();
   } catch (err) {
     headerSubtitle.textContent = 'Erro ao atualizar dados: ' + err.message;
@@ -1442,5 +1453,10 @@ searchInput.addEventListener('input', () => {
   if (latestHistory) renderCards(latestHistory, currentColMeta, currentTop, currentStatus);
 });
 
-loadData();
-setInterval(loadData, REFRESH_MS);
+if (!tableKey) {
+  headerSubtitle.textContent = 'Nenhuma tabela selecionada. Volte para a lista de tabelas.';
+} else {
+  configLink.href = `table-config.html?table=${encodeURIComponent(tableKey)}`;
+  loadData();
+  setInterval(loadData, REFRESH_MS);
+}

@@ -3,16 +3,20 @@ const express = require('express');
 const cors = require('cors');
 
 const env = require('./config/env');
-const { loadSettings } = require('./config/settingsStore');
+const tableRegistry = require('./config/tableRegistry');
+const settingsStore = require('./config/settingsStore');
 const { getPool } = require('./db/pool');
-const scheduler = require('./services/scheduler');
+const tableManager = require('./services/tableManager');
+const { resolveTable } = require('./routes/tableScope');
 
+const tablesRouter = require('./routes/tables');
 const columnsRouter = require('./routes/columns');
 const configRouter = require('./routes/config');
 const historyRouter = require('./routes/history');
 
 async function main() {
   await getPool();
+  tableRegistry.migrateLegacyIfNeeded(settingsStore.settingsPathFor);
 
   const app = express();
 
@@ -29,14 +33,14 @@ async function main() {
   app.use(express.json());
   app.use(express.static(path.join(__dirname, '..', 'public')));
 
-  app.use('/api/columns', columnsRouter);
-  app.use('/api/config', configRouter);
-  app.use('/api/history', historyRouter);
+  app.use('/api/tables/:tableKey/columns', resolveTable, columnsRouter);
+  app.use('/api/tables/:tableKey/config', resolveTable, configRouter);
+  app.use('/api/tables/:tableKey/history', resolveTable, historyRouter);
+  app.use('/api/tables', tablesRouter);
 
   app.get('/api/health', (req, res) => res.json({ ok: true }));
 
-  const settings = loadSettings();
-  await scheduler.start(settings);
+  await tableManager.initAll();
 
   app.listen(env.http.port, () => {
     console.log(`[http] servidor rodando em http://localhost:${env.http.port}`);
